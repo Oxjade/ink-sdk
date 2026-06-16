@@ -7,6 +7,8 @@ The mock proof shows SDK control flow. The live testnet proof shows real RPC dat
 ```bash
 npm run proof:mock
 npm run proof:testnet
+npm run proof:ika-sui
+npm run proof:bnb-public
 ```
 
 ## What `proof:testnet` Does Today
@@ -20,6 +22,8 @@ npm run proof:testnet
 - Reads real Solana slot and latest blockhash.
 - Reads real Sui checkpoint and chain identifier.
 - Prints a machine-readable evidence object.
+- Discovers real Ika testnet dWallet capabilities owned by the active Sui CLI address.
+- Calls real public functions on the BNB Smart Chain testnet WBNB contract.
 
 ## What Is Still Required For Executed Receipts
 
@@ -49,4 +53,3 @@ IKA_API_KEY=...
 ## Non-Negotiable Rule
 
 Do not label a transaction as `executed` unless a target chain RPC accepted it and a real receipt/confirmation was fetched.
-

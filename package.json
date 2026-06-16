@@ -13,6 +13,8 @@
     "proof": "npm run proof:mock",
     "proof:mock": "npm run build && node examples/proof-execution.mjs",
     "proof:testnet": "npm run build && node examples/testnet-live-data.mjs",
+    "proof:ika-sui": "node examples/ika-sui-cli-discovery.mjs",
+    "proof:bnb-public": "node examples/bnb-public-function.mjs",
     "clean": "tsc -b packages/* --clean"
   },
   "devDependencies": {

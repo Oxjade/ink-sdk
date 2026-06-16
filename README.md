@@ -171,3 +171,17 @@ It creates an Ink dWallet record, resolves its chain addresses, reads real nonce
 This script intentionally does not return a fake executed receipt. A real executed testnet receipt requires a funded testnet dWallet and a real Ika signing connector capable of returning chain-valid signatures.
 
 See `examples/REAL_TESTNET.md` for the execution checklist.
+
+Discover the active Sui CLI wallet's real Ika testnet objects:
+
+```bash
+npm run proof:ika-sui
+```
+
+Call real public functions on BNB Smart Chain testnet:
+
+```bash
+npm run proof:bnb-public
+```
+
+The BNB proof calls `name()`, `symbol()`, `decimals()`, and `totalSupply()` on the WBNB testnet contract using `eth_call`.
