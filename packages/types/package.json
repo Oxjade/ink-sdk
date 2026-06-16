@@ -1,0 +1,14 @@
+{
+  "name": "@ink/types",
+  "version": "0.1.0",
+  "description": "Shared types for the Ink SDK workspace.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false"
+  }
+}
+

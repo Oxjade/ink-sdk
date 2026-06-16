@@ -1,0 +1,21 @@
+{
+  "name": "@ink/sdk",
+  "version": "0.1.0",
+  "description": "Core Ink programmable cross-chain function execution SDK.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@ink/evm": "0.1.0",
+    "@ink/ika-connector": "0.1.0",
+    "@ink/solana": "0.1.0",
+    "@ink/sui": "0.1.0",
+    "@ink/types": "0.1.0"
+  }
+}
+

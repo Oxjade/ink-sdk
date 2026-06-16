@@ -1,26 +1,17 @@
 {
-  "name": "@ink/sdk",
+  "name": "ink-sdk-workspace",
   "version": "0.1.0",
-  "description": "TypeScript SDK for Ink dWallet-powered chain interactions.",
+  "private": true,
+  "description": "Ink programmable cross-chain function execution SDK workspace.",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -b packages/*",
+    "typecheck": "tsc -b packages/* --pretty false",
+    "clean": "tsc -b packages/* --clean"
   },
-  "keywords": [
-    "ink",
-    "dwallet",
-    "solana",
-    "evm",
-    "sui",
-    "sdk"
-  ],
-  "license": "MIT",
   "devDependencies": {
     "typescript": "^5.8.3"
   }

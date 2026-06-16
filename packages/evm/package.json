@@ -1,0 +1,17 @@
+{
+  "name": "@ink/evm",
+  "version": "0.1.0",
+  "description": "EVM adapter for Ink cross-chain function execution.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@ink/types": "0.1.0"
+  }
+}
+
