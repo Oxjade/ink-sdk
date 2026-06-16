@@ -10,10 +10,10 @@
   "scripts": {
     "build": "tsc -b packages/*",
     "typecheck": "tsc -b packages/* --pretty false",
+    "proof": "npm run build && node examples/proof-execution.mjs",
     "clean": "tsc -b packages/* --clean"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
   }
 }
-

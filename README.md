@@ -135,3 +135,21 @@ const receipt = await ink.call({
 
 Create dWallet. Define function. Sign with Ika. Execute across chains. Return receipt.
 
+## Proof Examples
+
+Run the local proof milestone:
+
+```bash
+npm run proof
+```
+
+The proof script demonstrates the current end-to-end SDK path for all supported chain types:
+
+1. Create a dWallet through Ink.
+2. Call an EVM contract function.
+3. Call a Solana program instruction.
+4. Call a Sui Move function.
+5. Mock sign each native transaction payload through the in-memory Ika connector.
+6. Return and assert executed receipts.
+
+The example lives at `examples/proof-execution.mjs`.
