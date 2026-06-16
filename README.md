@@ -137,7 +137,7 @@ Create dWallet. Define function. Sign with Ika. Execute across chains. Return re
 
 ## Proof Examples
 
-Run the local proof milestone:
+Run the local mock proof milestone:
 
 ```bash
 npm run proof
@@ -153,3 +153,21 @@ The proof script demonstrates the current end-to-end SDK path for all supported 
 6. Return and assert executed receipts.
 
 The example lives at `examples/proof-execution.mjs`.
+
+Run the live testnet data proof:
+
+```bash
+npm run proof:testnet
+```
+
+This uses real public testnet RPCs to fetch current chain data for:
+
+- EVM Sepolia
+- Solana devnet
+- Sui testnet
+
+It creates an Ink dWallet record, resolves its chain addresses, reads real nonce/block/gas/slot/checkpoint data, and prints a JSON evidence object.
+
+This script intentionally does not return a fake executed receipt. A real executed testnet receipt requires a funded testnet dWallet and a real Ika signing connector capable of returning chain-valid signatures.
+
+See `examples/REAL_TESTNET.md` for the execution checklist.
