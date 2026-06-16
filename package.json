@@ -1,0 +1,28 @@
+{
+  "name": "@ink/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Ink dWallet-powered chain interactions.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ink",
+    "dwallet",
+    "solana",
+    "evm",
+    "sui",
+    "sdk"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
+
