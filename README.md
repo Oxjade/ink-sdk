@@ -8,6 +8,11 @@ Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it bui
 
 The goal is programmable cross-chain execution for DeFi apps, automation, AI agents, vaults, protocols, and developer tools that need to perform real actions across multiple chains without rebuilding signing and transaction logic for every network.
 
+## Documentation
+
+- [Integration Guide](docs/INTEGRATION.md) - install, configure, create/import dWallets, call functions, use storage/idempotency, and run the real Ika EVM signing proof.
+- [Real Testnet Checklist](examples/REAL_TESTNET.md) - live proof commands, Ika env shape, and execution requirements.
+
 ## Product Line
 
 Ink is a programmable cross-chain function-call SDK.
@@ -190,6 +195,8 @@ INK_AUTO_REFRESH_IKA_PRESIGN=true npm run proof:ika-sign-bnb
 Use `IKA_GAS_COIN_ID`, `IKA_SIGN_GAS_COIN_ID`, `IKA_REFRESH_PRESIGN_GAS_BUDGET`, and `IKA_SIGN_GAS_BUDGET` to select funded Sui testnet gas coins for Ika operations.
 
 ## Proof Examples
+
+For complete setup and integration instructions, see [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 Run the local mock proof milestone:
 
