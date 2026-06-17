@@ -15,9 +15,17 @@
     "proof:testnet": "npm run build && node examples/testnet-live-data.mjs",
     "proof:ika-sui": "node examples/ika-sui-cli-discovery.mjs",
     "proof:bnb-public": "node examples/bnb-public-function.mjs",
+    "proof:ika-sign-bnb": "npm run build && node examples/ika-sign-bnb-transaction.mjs",
+    "ika:refresh-presign": "node examples/refresh-ika-presign.mjs",
     "clean": "tsc -b packages/* --clean"
   },
   "devDependencies": {
+    "@types/node": "^22.19.21",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@ika.xyz/sdk": "^0.4.1",
+    "@mysten/sui": "^2.18.0",
+    "ethers": "^6.16.0"
   }
 }

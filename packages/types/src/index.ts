@@ -155,7 +155,11 @@ export type ChainSignature = {
   signature: string | Uint8Array;
   recoveryId?: number;
   publicKey?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> & {
+    serializedTransaction?: string;
+    signerAddress?: string;
+    timings?: Record<string, number>;
+  };
 };
 
 export type BuiltTransaction = {
@@ -201,4 +205,3 @@ export type InkClientOptions = {
   chains?: InkChain[];
   adapters?: ChainAdapter[];
 };
-

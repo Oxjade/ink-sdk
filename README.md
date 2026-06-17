@@ -2,8 +2,6 @@
 
 Ink is a developer-first programmable cross-chain function execution SDK powered by Ika/dWallet signing.
 
-It is not a wallet-support product, wallet UX layer, mint SDK, payment SDK, launchpad-only SDK, or a set of hardcoded actions. The core primitive is `ink.call()`: developers bring the function, Ink builds the native transaction, Ika signs with a dWallet, and Ink executes on the target chain.
-
 ## Product Line
 
 Ink is a programmable cross-chain function-call SDK.
@@ -185,3 +183,11 @@ npm run proof:bnb-public
 ```
 
 The BNB proof calls `name()`, `symbol()`, `decimals()`, and `totalSupply()` on the WBNB testnet contract using `eth_call`.
+
+Run the real Ika EVM signing proof for BNB testnet:
+
+```bash
+npm run proof:ika-sign-bnb
+```
+
+This consumes the Ika signing environment from `../.env`, creates a real Ika signing request on Sui, receives the ECDSA signature, attaches it to a BNB testnet EVM transaction, and returns the signed transaction receipt object. It does not broadcast by default. Set `INK_BROADCAST_IKA_SIGNED_TX=true` only when the Ika EVM address is funded and you intentionally want to spend BNB testnet gas.

@@ -9,6 +9,7 @@ npm run proof:mock
 npm run proof:testnet
 npm run proof:ika-sui
 npm run proof:bnb-public
+npm run proof:ika-sign-bnb
 ```
 
 ## What `proof:testnet` Does Today
@@ -24,6 +25,7 @@ npm run proof:bnb-public
 - Prints a machine-readable evidence object.
 - Discovers real Ika testnet dWallet capabilities owned by the active Sui CLI address.
 - Calls real public functions on the BNB Smart Chain testnet WBNB contract.
+- Creates a real Ika EVM signing request and attaches the returned signature to a BNB testnet transaction.
 
 ## What Is Still Required For Executed Receipts
 
@@ -36,6 +38,8 @@ To return real executed receipts instead of mock receipts, Ink needs:
 5. A real Solana devnet program instruction to call.
 6. A real Sui testnet package Move function to call.
 7. Chain-specific transaction serialization and signature attachment using the signatures returned by Ika.
+
+`proof:ika-sign-bnb` implements item 7 for EVM/BNB testnet. Broadcasting remains opt-in via `INK_BROADCAST_IKA_SIGNED_TX=true`.
 
 ## Required Environment Shape
 

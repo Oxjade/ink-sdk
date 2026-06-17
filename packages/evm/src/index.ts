@@ -88,6 +88,15 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
   }
 
   async attachSignature(transaction: BuiltTransaction, signature: ChainSignature): Promise<unknown> {
+    if (signature.metadata?.serializedTransaction) {
+      return {
+        unsignedTransaction: transaction.nativeTransaction,
+        signature,
+        serialized: signature.metadata.serializedTransaction,
+        actionId: transaction.actionId,
+      };
+    }
+
     return {
       unsignedTransaction: transaction.nativeTransaction,
       signature,
@@ -119,7 +128,7 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
         };
     return {
       ...this.formatResult(result, params),
-      status: "executed",
+      status: receipt?.confirmed ? "executed" : isBroadcastSkipped(receipt) ? "signed" : "broadcast",
       receipt,
     };
   }
@@ -181,6 +190,16 @@ function extractSerialized(value: unknown): string {
 
 function createActionId(prefix: string): string {
   return `ink_${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isBroadcastSkipped(receipt: InkReceipt["receipt"]): boolean {
+  const raw = receipt?.raw;
+  return Boolean(
+    raw &&
+    typeof raw === "object" &&
+    "broadcastSkipped" in raw &&
+    (raw as { broadcastSkipped?: unknown }).broadcastSkipped === true
+  );
 }
 
 function stringToHex(input: string): string {
