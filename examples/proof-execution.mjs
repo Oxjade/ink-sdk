@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { InkClient } from "@ink/sdk";
+import path from "node:path";
+import { InkClient, createJsonFileStorage } from "@ink/sdk";
 
 const chains = [
   {
@@ -25,6 +26,7 @@ const ink = new InkClient({
     network: "mocknet",
   },
   chains,
+  storage: await createJsonFileStorage(path.resolve(".ink", "proof-store.json")),
 });
 
 const dwallet = await ink.dwallet.create({
@@ -56,6 +58,8 @@ const evmReceipt = await ink.call({
           { name: "amount", type: "uint256" },
           { name: "recipient", type: "address" },
         ],
+        outputs: [],
+        stateMutability: "payable",
       },
     ],
     functionName: "buyAllocation",
@@ -69,8 +73,47 @@ const evmReceipt = await ink.call({
   execution: {
     waitForReceipt: true,
     returnExplorerUrl: true,
+    idempotencyKey: "proof_evm_buy_allocation",
   },
 });
+
+const repeatedEvmReceipt = await ink.call({
+  targetChain: {
+    type: "evm",
+    chainId: 56,
+    explorerUrl: "https://bscscan.com",
+  },
+  target: {
+    contract: "0x1111111111111111111111111111111111111111",
+    abi: [
+      {
+        type: "function",
+        name: "buyAllocation",
+        inputs: [
+          { name: "saleId", type: "string" },
+          { name: "amount", type: "uint256" },
+          { name: "recipient", type: "address" },
+        ],
+        outputs: [],
+        stateMutability: "payable",
+      },
+    ],
+    functionName: "buyAllocation",
+    args: ["sale_01", "100", "0x2222222222222222222222222222222222222222"],
+    value: "0",
+  },
+  signing: {
+    provider: "ika",
+    dWalletId: dwallet.id,
+  },
+  execution: {
+    waitForReceipt: true,
+    returnExplorerUrl: true,
+    idempotencyKey: "proof_evm_buy_allocation",
+  },
+});
+
+assert.deepEqual(repeatedEvmReceipt, evmReceipt, "idempotency key should return the stored EVM receipt");
 
 const solanaReceipt = await ink.call({
   targetChain: {
@@ -145,4 +188,3 @@ for (const [chain, receipt] of Object.entries(receipts)) {
 console.log("proof receipts");
 console.log(JSON.stringify(receipts, null, 2));
 console.log("proof complete: create dWallet -> call function -> mock sign -> return receipt");
-

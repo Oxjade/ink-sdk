@@ -14,6 +14,7 @@ import type {
   InkClientOptions,
   InkEstimate,
   InkReceipt,
+  InkStorage,
 } from "@ink/types";
 
 export type {
@@ -32,6 +33,7 @@ export type {
   InkClientOptions,
   InkEstimate,
   InkReceipt,
+  InkStorage,
   SigningConfig,
   SolanaChain,
   SolanaTarget,
@@ -52,8 +54,10 @@ export class InkClient {
   private chains: InkChain[];
   private readonly adapters: ChainAdapter[];
   private readonly ika: IkaConnector;
+  private readonly storage?: InkStorage;
   private readonly statuses = new Map<string, InkActionStatus>();
   private readonly receipts = new Map<string, InkReceipt>();
+  private readonly idempotencyKeys = new Map<string, string>();
 
   constructor(options: InkClientOptions = {}) {
     this.chains = options.chains ?? [];
@@ -63,14 +67,15 @@ export class InkClient {
       new SuiAdapter(),
     ];
     this.ika = options.ika?.connector ?? new InMemoryIkaConnector();
+    this.storage = options.storage;
 
     this.dwallet = {
-      create: (request) => this.ika.createDWallet(request),
-      get: (dWalletId) => this.ika.getDWallet(dWalletId),
-      list: () => this.ika.listDWallets(),
-      getAddress: (dWalletId, chain) => this.ika.getAddress(dWalletId, chain),
-      linkChains: (dWalletId, chains) => this.ika.linkChains(dWalletId, chains),
-      importExisting: (request) => this.ika.importExisting(request),
+      create: (request) => this.createDWallet(request),
+      get: (dWalletId) => this.getDWallet(dWalletId),
+      list: () => this.listDWallets(),
+      getAddress: (dWalletId, chain) => this.getDWalletAddress(dWalletId, chain),
+      linkChains: (dWalletId, chains) => this.linkDWalletChains(dWalletId, chains),
+      importExisting: (request) => this.importExistingDWallet(request),
     };
   }
 
@@ -79,37 +84,53 @@ export class InkClient {
   }
 
   async call<TParams extends InkCallParams>(params: TParams): Promise<InkReceipt> {
+    const idempotencyKey = params.execution?.idempotencyKey;
+    if (idempotencyKey) {
+      const existing = await this.getReceiptByIdempotencyKey(idempotencyKey);
+      if (existing) return existing;
+    }
+
     const adapter = this.getAdapter(params.targetChain);
     this.ensureConfigured(params.targetChain);
 
     const built = await adapter.buildTransaction(params as never);
-    this.statuses.set(built.actionId, "built");
+    await this.setStatus(built.actionId, "built");
 
-    const signingPayload = await adapter.getSigningPayload(built);
-    this.statuses.set(built.actionId, "signing");
+    try {
+      const signingPayload = await adapter.getSigningPayload(built);
+      await this.setStatus(built.actionId, "signing");
 
-    const signature = await this.ika.sign({
-      dWalletId: params.signing.dWalletId,
-      targetChain: params.targetChain,
-      payload: signingPayload,
-    });
-    this.statuses.set(built.actionId, "signed");
+      const signature = await this.ika.sign({
+        dWalletId: params.signing.dWalletId,
+        targetChain: params.targetChain,
+        payload: signingPayload,
+      });
+      await this.setStatus(built.actionId, "signed");
 
-    const signedTx = await adapter.attachSignature(built, signature);
-    const result = await adapter.submit(signedTx, params as never);
-    this.statuses.set(built.actionId, "broadcast");
+      const signedTx = await adapter.attachSignature(built, signature);
+      const result = await adapter.submit(signedTx, params as never);
+      await this.setStatus(built.actionId, "broadcast");
 
-    const receipt = params.execution?.waitForReceipt
-      ? await adapter.waitForReceipt(result, params as never)
-      : adapter.formatResult(result, params as never);
+      const receipt = params.execution?.waitForReceipt
+        ? await adapter.waitForReceipt(result, params as never)
+        : adapter.formatResult(result, params as never);
 
-    const normalizedReceipt = {
-      ...receipt,
-      actionId: built.actionId,
-    };
-    this.statuses.set(built.actionId, normalizedReceipt.status);
-    this.receipts.set(built.actionId, normalizedReceipt);
-    return normalizedReceipt;
+      const normalizedReceipt = {
+        ...receipt,
+        actionId: built.actionId,
+      };
+      await this.setStatus(built.actionId, normalizedReceipt.status);
+      await this.setReceipt(normalizedReceipt, idempotencyKey);
+      return normalizedReceipt;
+    } catch (error) {
+      await this.setStatus(
+        built.actionId,
+        error instanceof Error && /broadcast|transaction|receipt/i.test(error.message)
+          ? "broadcast_failed"
+          : "sign_failed"
+      );
+      throw error;
+    }
   }
 
   async batch(params: InkCallParams[]): Promise<InkReceipt[]> {
@@ -129,11 +150,84 @@ export class InkClient {
   }
 
   async getStatus(actionId: string): Promise<InkActionStatus | undefined> {
-    return this.statuses.get(actionId);
+    return this.statuses.get(actionId) ?? await this.storage?.getStatus?.(actionId);
   }
 
   async getReceipt(actionId: string): Promise<InkReceipt | undefined> {
-    return this.receipts.get(actionId);
+    return this.receipts.get(actionId) ?? await this.storage?.getReceipt?.(actionId);
+  }
+
+  private async createDWallet(request: DWalletCreateRequest): Promise<DWalletRecord> {
+    const wallet = await this.ika.createDWallet(request);
+    await this.storage?.setDWallet?.(wallet);
+    return wallet;
+  }
+
+  private async getDWallet(dWalletId: string): Promise<DWalletRecord> {
+    try {
+      const wallet = await this.ika.getDWallet(dWalletId);
+      await this.storage?.setDWallet?.(wallet);
+      return wallet;
+    } catch (error) {
+      const stored = await this.storage?.getDWallet?.(dWalletId);
+      if (stored) return stored;
+      throw error;
+    }
+  }
+
+  private async listDWallets(): Promise<DWalletRecord[]> {
+    const live = await this.ika.listDWallets();
+    const stored = await this.storage?.listDWallets?.() ?? [];
+    const byId = new Map<string, DWalletRecord>();
+    for (const wallet of stored) byId.set(wallet.id, wallet);
+    for (const wallet of live) {
+      byId.set(wallet.id, wallet);
+      await this.storage?.setDWallet?.(wallet);
+    }
+    return Array.from(byId.values());
+  }
+
+  private async getDWalletAddress(dWalletId: string, chain: InkChain): Promise<string> {
+    try {
+      return await this.ika.getAddress(dWalletId, chain);
+    } catch (error) {
+      const wallet = await this.storage?.getDWallet?.(dWalletId);
+      const address = wallet?.addresses[chain.type];
+      if (address) return address;
+      throw error;
+    }
+  }
+
+  private async linkDWalletChains(dWalletId: string, chains: InkChain[]): Promise<DWalletRecord> {
+    const wallet = await this.ika.linkChains(dWalletId, chains);
+    await this.storage?.setDWallet?.(wallet);
+    return wallet;
+  }
+
+  private async importExistingDWallet(request: DWalletImportRequest): Promise<DWalletRecord> {
+    const wallet = await this.ika.importExisting(request);
+    await this.storage?.setDWallet?.(wallet);
+    return wallet;
+  }
+
+  private async setStatus(actionId: string, status: InkActionStatus): Promise<void> {
+    this.statuses.set(actionId, status);
+    await this.storage?.setStatus?.(actionId, status);
+  }
+
+  private async setReceipt(receipt: InkReceipt, idempotencyKey?: string): Promise<void> {
+    this.receipts.set(receipt.actionId, receipt);
+    await this.storage?.setReceipt?.(receipt);
+    if (idempotencyKey) {
+      this.idempotencyKeys.set(idempotencyKey, receipt.actionId);
+      await this.storage?.setIdempotencyKey?.(idempotencyKey, receipt.actionId);
+    }
+  }
+
+  private async getReceiptByIdempotencyKey(key: string): Promise<InkReceipt | undefined> {
+    const actionId = this.idempotencyKeys.get(key);
+    if (actionId) return this.getReceipt(actionId);
+    return this.storage?.getReceiptByIdempotencyKey?.(key);
   }
 
   private getAdapter(chain: InkChain): ChainAdapter {
@@ -153,6 +247,82 @@ export class InkClient {
   }
 }
 
+export async function createJsonFileStorage(filePath: string): Promise<InkStorage> {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+
+  type Store = {
+    statuses: Record<string, InkActionStatus>;
+    receipts: Record<string, InkReceipt>;
+    idempotencyKeys: Record<string, string>;
+    dWallets: Record<string, DWalletRecord>;
+  };
+
+  const empty = (): Store => ({
+    statuses: {},
+    receipts: {},
+    idempotencyKeys: {},
+    dWallets: {},
+  });
+  const read = async (): Promise<Store> => {
+    try {
+      return JSON.parse(await fs.readFile(filePath, "utf8")) as Store;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty();
+      throw error;
+    }
+  };
+  const write = async (store: Store): Promise<void> => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, `${JSON.stringify(store, null, 2)}\n`);
+  };
+  const update = async (mutate: (store: Store) => void): Promise<void> => {
+    const store = await read();
+    mutate(store);
+    await write(store);
+  };
+
+  return {
+    async getStatus(actionId) {
+      return (await read()).statuses[actionId];
+    },
+    async setStatus(actionId, status) {
+      await update((store) => {
+        store.statuses[actionId] = status;
+      });
+    },
+    async getReceipt(actionId) {
+      return (await read()).receipts[actionId];
+    },
+    async setReceipt(receipt) {
+      await update((store) => {
+        store.receipts[receipt.actionId] = receipt;
+      });
+    },
+    async getReceiptByIdempotencyKey(key) {
+      const store = await read();
+      const actionId = store.idempotencyKeys[key];
+      return actionId ? store.receipts[actionId] : undefined;
+    },
+    async setIdempotencyKey(key, actionId) {
+      await update((store) => {
+        store.idempotencyKeys[key] = actionId;
+      });
+    },
+    async getDWallet(dWalletId) {
+      return (await read()).dWallets[dWalletId];
+    },
+    async setDWallet(wallet) {
+      await update((store) => {
+        store.dWallets[wallet.id] = wallet;
+      });
+    },
+    async listDWallets() {
+      return Object.values((await read()).dWallets);
+    },
+  };
+}
+
 function sameChain(left: InkChain, right: InkChain): boolean {
   if (left.type !== right.type) return false;
   if (left.type === "evm" && right.type === "evm") return left.chainId === right.chainId;
@@ -166,4 +336,3 @@ function describeChain(chain: InkChain): string {
   if (chain.type === "solana") return `solana:${chain.cluster}`;
   return `sui:${chain.network}`;
 }
-

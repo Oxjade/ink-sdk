@@ -9,6 +9,7 @@ import type {
   InkTransactionResult,
   SigningPayload,
 } from "@ink/types";
+import { Interface, type InterfaceAbi } from "ethers";
 
 export type EvmRpc = {
   estimateGas?: (tx: EvmUnsignedTransaction) => Promise<string>;
@@ -51,7 +52,7 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
     const tx: EvmUnsignedTransaction = {
       chainId: params.targetChain.chainId,
       to: target.contract,
-      data: encodeFunctionCall(target.functionName, target.args ?? []),
+      data: encodeFunctionCall(target.abi, target.functionName, target.args ?? []),
       value: target.value ?? "0",
       from,
     };
@@ -164,10 +165,9 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
   }
 }
 
-export function encodeFunctionCall(functionName: string, args: unknown[]): string {
-  const encodedArgs = stringToHex(JSON.stringify(args));
-  const selector = stringToHex(functionName).slice(0, 8).padEnd(8, "0");
-  return `0x${selector}${encodedArgs}`;
+export function encodeFunctionCall(abi: unknown[], functionName: string, args: unknown[]): string {
+  const iface = new Interface(abi as InterfaceAbi);
+  return iface.encodeFunctionData(functionName, args as readonly unknown[]);
 }
 
 function buildExplorerUrl(chain: EvmChain, hash: string): string | undefined {
@@ -200,10 +200,6 @@ function isBroadcastSkipped(receipt: InkReceipt["receipt"]): boolean {
     "broadcastSkipped" in raw &&
     (raw as { broadcastSkipped?: unknown }).broadcastSkipped === true
   );
-}
-
-function stringToHex(input: string): string {
-  return bytesToHex(new TextEncoder().encode(input));
 }
 
 function bytesToHex(input: Uint8Array): string {

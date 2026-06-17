@@ -107,6 +107,8 @@ export type InkActionStatus =
   | "signed"
   | "broadcast"
   | "executed"
+  | "sign_failed"
+  | "broadcast_failed"
   | "failed";
 
 export type InkTransactionResult = {
@@ -204,4 +206,17 @@ export type InkClientOptions = {
   };
   chains?: InkChain[];
   adapters?: ChainAdapter[];
+  storage?: InkStorage;
 };
+
+export interface InkStorage {
+  getStatus?(actionId: string): Promise<InkActionStatus | undefined>;
+  setStatus?(actionId: string, status: InkActionStatus): Promise<void>;
+  getReceipt?(actionId: string): Promise<InkReceipt | undefined>;
+  setReceipt?(receipt: InkReceipt): Promise<void>;
+  getReceiptByIdempotencyKey?(key: string): Promise<InkReceipt | undefined>;
+  setIdempotencyKey?(key: string, actionId: string): Promise<void>;
+  getDWallet?(dWalletId: string): Promise<DWalletRecord | undefined>;
+  setDWallet?(wallet: DWalletRecord): Promise<void>;
+  listDWallets?(): Promise<DWalletRecord[]>;
+}

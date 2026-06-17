@@ -139,6 +139,56 @@ const receipt = await ink.call({
 
 Create dWallet. Define function. Sign with Ika. Execute across chains. Return receipt.
 
+## Current SDK Capabilities
+
+- `ink.call()` orchestrates build -> signing payload -> Ika/dWallet signing -> signature attachment -> submit -> receipt.
+- `ink.batch()` runs multiple calls sequentially and returns all receipts.
+- `ink.estimate()` asks the selected chain adapter for gas, fee, or compute estimates when available.
+- `ink.getStatus()` and `ink.getReceipt()` expose execution state and stored receipts.
+- `ink.dwallet.create()`, `ink.dwallet.importExisting()`, `ink.dwallet.get()`, `ink.dwallet.list()`, `ink.dwallet.getAddress()`, and `ink.dwallet.linkChains()` provide the dWallet facade.
+- Optional `storage` lets apps persist receipts, statuses, idempotency keys, and dWallet metadata.
+- `createJsonFileStorage(path)` provides a Node-friendly JSON storage implementation for local tools and examples.
+- `@ink/evm` now uses real ABI calldata encoding through `ethers.Interface`.
+- `IkaEvmSigningConnector` performs the real Ika EVM signing path for BNB/EVM testnet flows.
+
+## Storage and Idempotency
+
+```ts
+import { InkClient, createJsonFileStorage } from "@ink/sdk";
+
+const ink = new InkClient({
+  storage: await createJsonFileStorage(".ink/ink-store.json"),
+});
+
+const receipt = await ink.call({
+  targetChain,
+  target,
+  signing,
+  execution: {
+    waitForReceipt: true,
+    idempotencyKey: "treasury-payout-001",
+  },
+});
+```
+
+When the same `idempotencyKey` is used again, Ink returns the stored receipt instead of sending a duplicate call.
+
+## Real Ika Presign Refresh
+
+For live Ika EVM signing, presigns are consumable. Refresh manually:
+
+```bash
+npm run ika:refresh-presign
+```
+
+Or refresh automatically before the signing proof:
+
+```bash
+INK_AUTO_REFRESH_IKA_PRESIGN=true npm run proof:ika-sign-bnb
+```
+
+Use `IKA_GAS_COIN_ID`, `IKA_SIGN_GAS_COIN_ID`, `IKA_REFRESH_PRESIGN_GAS_BUDGET`, and `IKA_SIGN_GAS_BUDGET` to select funded Sui testnet gas coins for Ika operations.
+
 ## Proof Examples
 
 Run the local mock proof milestone:
@@ -155,6 +205,7 @@ The proof script demonstrates the current end-to-end SDK path for all supported 
 4. Call a Sui Move function.
 5. Mock sign each native transaction payload through the in-memory Ika connector.
 6. Return and assert executed receipts.
+7. Persist dWallets, statuses, receipts, and idempotency mappings in `.ink/proof-store.json`.
 
 The example lives at `examples/proof-execution.mjs`.
 
@@ -197,3 +248,13 @@ npm run proof:ika-sign-bnb
 ```
 
 This consumes the Ika signing environment from `../.env`, creates a real Ika signing request on Sui, receives the ECDSA signature, attaches it to a BNB testnet EVM transaction, and returns the signed transaction receipt object. It does not broadcast by default. Set `INK_BROADCAST_IKA_SIGNED_TX=true` only when the Ika EVM address is funded and you intentionally want to spend BNB testnet gas.
+
+## Integration Roadmap
+
+The repo now contains the SDK hooks for the full product path. Remaining production integrations are:
+
+- Real Ika dWallet provisioning behind `ink.dwallet.create()`.
+- Automatic production presign pools instead of example-level refresh scripts.
+- Fully native Solana transaction serialization, dWallet signing, and broadcast.
+- Fully native Sui programmable transaction construction, signing, and broadcast.
+- Policy controls for spending limits, transaction simulation, replay protection, and scoped signing.

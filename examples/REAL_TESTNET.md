@@ -12,6 +12,18 @@ npm run proof:bnb-public
 npm run proof:ika-sign-bnb
 ```
 
+Refresh a consumable Ika presign before a live signing run:
+
+```bash
+npm run ika:refresh-presign
+```
+
+Or do both in one command:
+
+```bash
+INK_AUTO_REFRESH_IKA_PRESIGN=true npm run proof:ika-sign-bnb
+```
+
 ## What `proof:testnet` Does Today
 
 - Connects to live EVM Sepolia RPC.
@@ -26,6 +38,8 @@ npm run proof:ika-sign-bnb
 - Discovers real Ika testnet dWallet capabilities owned by the active Sui CLI address.
 - Calls real public functions on the BNB Smart Chain testnet WBNB contract.
 - Creates a real Ika EVM signing request and attaches the returned signature to a BNB testnet transaction.
+- Uses real EVM ABI calldata encoding through `ethers.Interface`.
+- Can persist local mock proof state with `createJsonFileStorage`.
 
 ## What Is Still Required For Executed Receipts
 
@@ -41,6 +55,12 @@ To return real executed receipts instead of mock receipts, Ink needs:
 
 `proof:ika-sign-bnb` implements item 7 for EVM/BNB testnet. Broadcasting remains opt-in via `INK_BROADCAST_IKA_SIGNED_TX=true`.
 
+The verified Ika EVM signing path currently returns a `signed` receipt when broadcast is skipped. To return an `executed` receipt on BNB testnet, fund the Ika EVM signer address with tBNB and run:
+
+```bash
+INK_BROADCAST_IKA_SIGNED_TX=true npm run proof:ika-sign-bnb
+```
+
 ## Required Environment Shape
 
 ```bash
@@ -52,6 +72,17 @@ IKA_NETWORK=testnet
 IKA_DWALLET_ID=...
 IKA_SIGN_ENDPOINT=...
 IKA_API_KEY=...
+```
+
+Additional live Ika signing controls:
+
+```bash
+IKA_GAS_COIN_ID=0x...                 # Sui gas coin for presign refresh
+IKA_SIGN_GAS_COIN_ID=0x...            # Sui gas coin for signing request
+IKA_REFRESH_PRESIGN_GAS_BUDGET=50000000
+IKA_SIGN_GAS_BUDGET=100000000
+INK_AUTO_REFRESH_IKA_PRESIGN=true
+INK_BROADCAST_IKA_SIGNED_TX=false
 ```
 
 ## Non-Negotiable Rule

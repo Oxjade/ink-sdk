@@ -5,7 +5,11 @@ import { EvmAdapter } from "@ink/evm";
 import { IkaEvmSigningConnector } from "@ink/ika-connector";
 import { InkClient } from "@ink/sdk";
 
-const env = loadEnvFile(path.resolve("..", ".env"));
+const envPath = path.resolve("..", ".env");
+if (process.env.INK_AUTO_REFRESH_IKA_PRESIGN === "true") {
+  await import("./refresh-ika-presign.mjs");
+}
+const env = loadEnvFile(envPath);
 const required = [
   "IKA_NETWORK",
   "IKA_SUI_RPC",
