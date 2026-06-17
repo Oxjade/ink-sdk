@@ -26,6 +26,7 @@ export class SuiAdapter implements ChainAdapter<SuiChain> {
   }
 
   async buildTransaction(params: InkCallParams<SuiChain>): Promise<BuiltTransaction> {
+    validateSuiParams(params);
     return {
       actionId: createActionId("sui"),
       targetChain: params.targetChain,
@@ -121,3 +122,23 @@ function createActionId(prefix: string): string {
   return `ink_${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function validateSuiParams(params: InkCallParams<SuiChain>): void {
+  if (!params.targetChain.network) {
+    throw new Error("Sui network is required");
+  }
+  if (!params.target.packageId) {
+    throw new Error("Sui packageId is required");
+  }
+  if (!params.target.module) {
+    throw new Error("Sui module is required");
+  }
+  if (!params.target.functionName) {
+    throw new Error("Sui functionName is required");
+  }
+  if (params.target.typeArguments !== undefined && !Array.isArray(params.target.typeArguments)) {
+    throw new Error("Sui typeArguments must be an array");
+  }
+  if (params.target.arguments !== undefined && !Array.isArray(params.target.arguments)) {
+    throw new Error("Sui arguments must be an array");
+  }
+}

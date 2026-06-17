@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -b packages/*",
     "typecheck": "tsc -b packages/* --pretty false",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "proof": "npm run proof:mock",
     "proof:mock": "npm run build && node examples/proof-execution.mjs",
     "proof:testnet": "npm run build && node examples/testnet-live-data.mjs",

@@ -35,6 +35,8 @@ Ink is designed for applications that need to perform real actions across chains
 | EVM ABI calldata encoding | Implemented with `ethers.Interface` |
 | EVM broadcast | Implemented when RPC broadcaster and target-chain gas are available |
 | Storage and idempotency | Implemented |
+| Production mode connector guard | Implemented |
+| Lifecycle events | Implemented |
 | Solana adapter shape | Implemented as adapter foundation |
 | Native Solana signing/broadcast | Integration pending |
 | Sui adapter shape | Implemented as adapter foundation |
@@ -53,7 +55,7 @@ npm run build
 Package names used by the SDK:
 
 ```ts
-import { InkClient } from "@ink/sdk";
+import { createInkClient } from "@ink/sdk";
 import { EvmAdapter } from "@ink/evm";
 import { IkaEvmSigningConnector } from "@ink/ika-connector";
 ```
@@ -67,10 +69,16 @@ npm install @ink/sdk @ink/evm @ink/ika-connector
 ## Create a Client
 
 ```ts
-import { InkClient } from "@ink/sdk";
+import { createInkClient } from "@ink/sdk";
+import { IkaEvmSigningConnector } from "@ink/ika-connector";
 
-const ink = new InkClient({
+const ink = createInkClient({
+  mode: "production",
   projectId: "my-project",
+  ika: {
+    network: "testnet",
+    connector: new IkaEvmSigningConnector(),
+  },
   chains: [
     {
       type: "evm",
@@ -95,6 +103,8 @@ const ink = new InkClient({
 ```
 
 If `chains` is set, Ink rejects calls to chains that are not configured. If `chains` is omitted, Ink allows any chain supported by the configured adapters.
+
+Production mode requires a real `ika.connector`. Without one, client creation fails immediately so a mock signer cannot accidentally ship to users.
 
 ## dWallet Setup
 
@@ -290,6 +300,25 @@ const receipt = await ink.call({
 ```
 
 If the same idempotency key is used again, Ink returns the stored receipt.
+
+## Subscribe to Lifecycle Events
+
+```ts
+const unsubscribeStatus = ink.on("action:status", ({ actionId, status }) => {
+  console.info("[ink]", actionId, status);
+});
+
+const unsubscribeReceipt = ink.on("action:receipt", ({ receipt }) => {
+  reconcileReceipt(receipt);
+});
+
+ink.on("action:error", ({ actionId, error }) => {
+  reportExecutionFailure(actionId, error);
+});
+
+unsubscribeStatus();
+unsubscribeReceipt();
+```
 
 For production apps, implement the `InkStorage` interface with your database:
 

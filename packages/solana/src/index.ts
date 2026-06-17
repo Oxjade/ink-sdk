@@ -26,6 +26,7 @@ export class SolanaAdapter implements ChainAdapter<SolanaChain> {
   }
 
   async buildTransaction(params: InkCallParams<SolanaChain>): Promise<BuiltTransaction> {
+    validateSolanaParams(params);
     return {
       actionId: createActionId("solana"),
       targetChain: params.targetChain,
@@ -116,3 +117,22 @@ function createActionId(prefix: string): string {
   return `ink_${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function validateSolanaParams(params: InkCallParams<SolanaChain>): void {
+  if (!params.targetChain.cluster) {
+    throw new Error("Solana cluster is required");
+  }
+  if (!params.target.programId) {
+    throw new Error("Solana programId is required");
+  }
+  if (!params.target.instruction) {
+    throw new Error("Solana instruction is required");
+  }
+  if (!Array.isArray(params.target.accounts)) {
+    throw new Error("Solana accounts must be an array");
+  }
+  for (const account of params.target.accounts) {
+    if (!account.pubkey) {
+      throw new Error("Solana account pubkey is required");
+    }
+  }
+}

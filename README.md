@@ -25,7 +25,7 @@ EVM by chain ID. Solana by program instruction. Sui by Move call. Ika signs. Ink
 
 This repository is organized as a TypeScript workspace:
 
-- `@ink/sdk` - core client, `ink.call()`, `ink.batch()`, status, receipts, chain configuration, and dWallet facade.
+- `@ink/sdk` - core client, `createInkClient()`, `ink.call()`, `ink.batch()`, lifecycle events, status, receipts, chain configuration, and dWallet facade.
 - `@ink/evm` - EVM adapter for ABI calls, transaction building, signing payloads, signature attachment, broadcast, and receipts.
 - `@ink/solana` - Solana adapter for native program instructions, message serialization, signature attachment, send, confirm, and receipts.
 - `@ink/sui` - Sui adapter for Move calls and programmable transaction execution.
@@ -97,18 +97,25 @@ const dwallet = await ink.dwallet.create({
 ## Final Developer Goal
 
 ```ts
-import { InkClient } from "@ink/sdk";
+import { createInkClient } from "@ink/sdk";
+import { IkaEvmSigningConnector } from "@ink/ika-connector";
 
-const ink = new InkClient({
+const ink = createInkClient({
+  mode: "production",
   projectId: "project_123",
   ika: {
     network: "testnet",
+    connector: new IkaEvmSigningConnector(),
   },
   chains: [
     { type: "evm", chainId: 56 },
     { type: "solana", cluster: "devnet" },
     { type: "sui", network: "testnet" },
   ],
+});
+
+ink.on("action:status", ({ actionId, status }) => {
+  console.info("[ink]", actionId, status);
 });
 
 const dwallet = await ink.dwallet.create({
@@ -150,11 +157,14 @@ Create dWallet. Define function. Sign with Ika. Execute across chains. Return re
 - `ink.batch()` runs multiple calls sequentially and returns all receipts.
 - `ink.estimate()` asks the selected chain adapter for gas, fee, or compute estimates when available.
 - `ink.getStatus()` and `ink.getReceipt()` expose execution state and stored receipts.
+- `ink.on("action:status" | "action:receipt" | "action:error")` exposes lifecycle events for product UI, logs, and reconciliation.
 - `ink.dwallet.create()`, `ink.dwallet.importExisting()`, `ink.dwallet.get()`, `ink.dwallet.list()`, `ink.dwallet.getAddress()`, and `ink.dwallet.linkChains()` provide the dWallet facade.
 - Optional `storage` lets apps persist receipts, statuses, idempotency keys, and dWallet metadata.
 - `createJsonFileStorage(path)` provides a Node-friendly JSON storage implementation for local tools and examples.
 - `@ink/evm` now uses real ABI calldata encoding through `ethers.Interface`.
 - `IkaEvmSigningConnector` performs the real Ika EVM signing path for BNB/EVM testnet flows.
+
+Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector.
 
 ## Storage and Idempotency
 

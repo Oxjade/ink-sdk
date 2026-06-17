@@ -199,6 +199,7 @@ export interface IkaConnector {
 }
 
 export type InkClientOptions = {
+  mode?: "development" | "production";
   projectId?: string;
   ika?: {
     network?: string;

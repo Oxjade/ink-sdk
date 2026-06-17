@@ -9,7 +9,7 @@ import type {
   InkTransactionResult,
   SigningPayload,
 } from "@ink/types";
-import { Interface, type InterfaceAbi } from "ethers";
+import { Interface, isAddress, type InterfaceAbi } from "ethers";
 
 export type EvmRpc = {
   estimateGas?: (tx: EvmUnsignedTransaction) => Promise<string>;
@@ -46,6 +46,7 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
 
   async buildTransaction(params: InkCallParams<EvmChain>): Promise<BuiltTransaction> {
     const target = params.target;
+    validateEvmParams(params);
     const from = this.options.fromAddressResolver
       ? await this.options.fromAddressResolver(params)
       : undefined;
@@ -168,6 +169,28 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
 export function encodeFunctionCall(abi: unknown[], functionName: string, args: unknown[]): string {
   const iface = new Interface(abi as InterfaceAbi);
   return iface.encodeFunctionData(functionName, args as readonly unknown[]);
+}
+
+function validateEvmParams(params: InkCallParams<EvmChain>): void {
+  if (!Number.isInteger(params.targetChain.chainId) || params.targetChain.chainId <= 0) {
+    throw new Error("EVM chainId must be a positive integer");
+  }
+  if (!isAddress(params.target.contract)) {
+    throw new Error(`Invalid EVM contract address: ${params.target.contract}`);
+  }
+  if (!Array.isArray(params.target.abi) || params.target.abi.length === 0) {
+    throw new Error("EVM target ABI is required");
+  }
+  if (!params.target.functionName) {
+    throw new Error("EVM target functionName is required");
+  }
+  if (params.target.value !== undefined) {
+    try {
+      BigInt(params.target.value);
+    } catch {
+      throw new Error("EVM target value must be a bigint-compatible string");
+    }
+  }
 }
 
 function buildExplorerUrl(chain: EvmChain, hash: string): string | undefined {
