@@ -2,6 +2,12 @@
 
 Ink is a developer-first programmable cross-chain function execution SDK powered by Ika/dWallet signing.
 
+Ink lets developers call blockchain functions through one SDK while Ika/dWallet provides programmable signing. A developer defines the target chain, contract/program/module, function, args, and signing method; Ink builds the native transaction for that chain, routes it through Ika/dWallet signing, attaches the returned signature, executes or returns the signed transaction, and gives back a clean receipt.
+
+Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it builds ABI function calls, estimates gas, creates the EVM transaction, gets an Ika-backed secp256k1 signature, serializes the signed transaction, and can broadcast it. For Solana, the SDK is structured around program instruction creation, message serialization, dWallet-backed signing, transaction send, and confirmation. For Sui, it supports Move-call style execution and Ika/dWallet coordination through the Sui/Ika testnet environment.
+
+The goal is programmable cross-chain execution for DeFi apps, automation, AI agents, vaults, protocols, and developer tools that need to perform real actions across multiple chains without rebuilding signing and transaction logic for every network.
+
 ## Product Line
 
 Ink is a programmable cross-chain function-call SDK.
