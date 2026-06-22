@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { InkClient } from "@ink/sdk";
-import type { InkCallParams, InkClientOptions, InkReceipt } from "@ink/types";
+import { InkClient } from "@ink-sdk/sdk";
+import type { InkCallParams, InkClientOptions, InkReceipt } from "@ink-sdk/types";
 
 export function useInkClient(options: InkClientOptions): InkClient {
   return useMemo(() => new InkClient(options), [options]);

@@ -1,5 +1,5 @@
 {
-  "name": "@ink/types",
+  "name": "@ink-sdk/types",
   "version": "0.1.0",
   "description": "Shared types for the Ink SDK workspace.",
   "type": "module",

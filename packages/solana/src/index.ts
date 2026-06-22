@@ -8,7 +8,7 @@ import type {
   InkTransactionResult,
   SigningPayload,
   SolanaChain,
-} from "@ink/types";
+} from "@ink-sdk/types";
 
 export type SolanaRpc = {
   sendTransaction?: (transaction: unknown, chain: SolanaChain) => Promise<InkTransactionResult>;

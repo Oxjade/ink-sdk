@@ -1,5 +1,5 @@
 {
-  "name": "@ink/react",
+  "name": "@ink-sdk/react",
   "version": "0.1.0",
   "description": "React bindings for the Ink SDK.",
   "type": "module",
@@ -20,8 +20,8 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@ink/sdk": "0.1.0",
-    "@ink/types": "0.1.0"
+    "@ink-sdk/sdk": "0.1.0",
+    "@ink-sdk/types": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=18"

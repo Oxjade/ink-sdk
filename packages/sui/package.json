@@ -1,5 +1,5 @@
 {
-  "name": "@ink/sui",
+  "name": "@ink-sdk/sui",
   "version": "0.1.0",
   "description": "Sui adapter for Ink cross-chain function execution.",
   "type": "module",
@@ -20,6 +20,6 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@ink/types": "0.1.0"
+    "@ink-sdk/types": "0.1.0"
   }
 }

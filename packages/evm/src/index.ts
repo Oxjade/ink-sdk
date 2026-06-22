@@ -8,7 +8,7 @@ import type {
   InkReceipt,
   InkTransactionResult,
   SigningPayload,
-} from "@ink/types";
+} from "@ink-sdk/types";
 import { Interface, isAddress, type InterfaceAbi } from "ethers";
 
 export type EvmRpc = {

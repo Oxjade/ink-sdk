@@ -7,7 +7,7 @@ import type {
   IkaConnector,
   InkChain,
   SigningPayload,
-} from "@ink/types";
+} from "@ink-sdk/types";
 import { ethers } from "ethers";
 
 export type IkaSdkLikeClient = {

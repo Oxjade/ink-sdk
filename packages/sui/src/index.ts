@@ -8,7 +8,7 @@ import type {
   InkTransactionResult,
   SigningPayload,
   SuiChain,
-} from "@ink/types";
+} from "@ink-sdk/types";
 
 export type SuiRpc = {
   submitTransaction?: (transaction: unknown, chain: SuiChain) => Promise<InkTransactionResult>;

@@ -1,7 +1,7 @@
-import { EvmAdapter } from "@ink/evm";
-import { InMemoryIkaConnector } from "@ink/ika-connector";
-import { SolanaAdapter } from "@ink/solana";
-import { SuiAdapter } from "@ink/sui";
+import { EvmAdapter } from "@ink-sdk/evm";
+import { InMemoryIkaConnector } from "@ink-sdk/ika-connector";
+import { SolanaAdapter } from "@ink-sdk/solana";
+import { SuiAdapter } from "@ink-sdk/sui";
 import type {
   ChainAdapter,
   DWalletCreateRequest,
@@ -15,7 +15,7 @@ import type {
   InkEstimate,
   InkReceipt,
   InkStorage,
-} from "@ink/types";
+} from "@ink-sdk/types";
 
 export type InkClientEventMap = {
   "action:status": { actionId: string; status: InkActionStatus };
@@ -50,7 +50,7 @@ export type {
   SolanaTarget,
   SuiChain,
   SuiTarget,
-} from "@ink/types";
+} from "@ink-sdk/types";
 
 export class InkClient {
   readonly dwallet: {

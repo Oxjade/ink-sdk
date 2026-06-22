@@ -1,5 +1,5 @@
 {
-  "name": "@ink/sdk",
+  "name": "@ink-sdk/sdk",
   "version": "0.1.0",
   "description": "Core Ink programmable cross-chain function execution SDK.",
   "type": "module",
@@ -20,10 +20,10 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@ink/evm": "0.1.0",
-    "@ink/ika-connector": "0.1.0",
-    "@ink/solana": "0.1.0",
-    "@ink/sui": "0.1.0",
-    "@ink/types": "0.1.0"
+    "@ink-sdk/evm": "0.1.0",
+    "@ink-sdk/ika-connector": "0.1.0",
+    "@ink-sdk/solana": "0.1.0",
+    "@ink-sdk/sui": "0.1.0",
+    "@ink-sdk/types": "0.1.0"
   }
 }
