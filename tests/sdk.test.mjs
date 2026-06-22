@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { IkaEvmSigningConnector } from "../packages/ika-connector/dist/index.js";
 import { InkClient, createInkClient } from "../packages/sdk/dist/index.js";
 
 const evmChain = {
@@ -58,6 +59,35 @@ test("production mode refuses to use the development connector implicitly", () =
   assert.throws(
     () => new InkClient({ mode: "production" }),
     /production mode requires a real Ika connector/,
+  );
+});
+
+test("real Ika EVM connector refuses mock configuration and non-EVM mock signing", async () => {
+  assert.throws(
+    () => new IkaEvmSigningConnector({ env: {} }),
+    /Missing required Ika signing env vars/,
+  );
+
+  const connector = new IkaEvmSigningConnector({
+    env: {
+      IKA_DWALLET_ID: "0xdwallet",
+      IKA_DWALLET_CAP_ID: "0xcap",
+      IKA_PRESIGN_ID: "0xpresign",
+      IKA_UNVERIFIED_PRESIGN_CAP_ID: "0xpresigncap",
+      IKA_COIN_ID: "0xika",
+      IKA_SUI_COIN_ID: "0xsui",
+      IKA_ETH_ADDRESS: "0x0000000000000000000000000000000000000001",
+      IKA_SUI_PRIVATE_KEY: "suiprivkey-placeholder",
+    },
+  });
+
+  await assert.rejects(
+    () => connector.sign({
+      dWalletId: "0xdwallet",
+      targetChain: { type: "solana", cluster: "devnet" },
+      payload: { kind: "solana-message", bytes: new Uint8Array() },
+    }),
+    /only supports real EVM signing/,
   );
 });
 

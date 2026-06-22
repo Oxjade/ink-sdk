@@ -66,6 +66,12 @@ When published, apps should install the packages they need:
 npm install @ink/sdk @ink/evm @ink/ika-connector
 ```
 
+For the standard production EVM path, install the SDK and Ika connector directly:
+
+```bash
+npm install @ink/sdk @ink/ika-connector
+```
+
 ## Create a Client
 
 ```ts
@@ -77,7 +83,9 @@ const ink = createInkClient({
   projectId: "my-project",
   ika: {
     network: "testnet",
-    connector: new IkaEvmSigningConnector(),
+    connector: new IkaEvmSigningConnector({
+      env: process.env,
+    }),
   },
   chains: [
     {
@@ -104,13 +112,28 @@ const ink = createInkClient({
 
 If `chains` is set, Ink rejects calls to chains that are not configured. If `chains` is omitted, Ink allows any chain supported by the configured adapters.
 
-Production mode requires a real `ika.connector`. Without one, client creation fails immediately so a mock signer cannot accidentally ship to users.
+Production mode requires a real `ika.connector`. Without one, client creation fails immediately so a mock signer cannot accidentally ship to users. `IkaEvmSigningConnector` is also production-only: it validates the real Ika/Sui signing env vars during construction, never provisions deterministic mock dWallets, and only signs EVM payloads through the Ika signing transaction flow.
+
+Required production Ika env vars:
+
+```bash
+IKA_NETWORK=testnet
+IKA_SUI_RPC=https://fullnode.testnet.sui.io:443
+IKA_SUI_PRIVATE_KEY=suiprivkey...
+IKA_DWALLET_ID=0x...
+IKA_DWALLET_CAP_ID=0x...
+IKA_PRESIGN_ID=0x...
+IKA_UNVERIFIED_PRESIGN_CAP_ID=0x...
+IKA_COIN_ID=0x...
+IKA_SUI_COIN_ID=0x...
+IKA_ETH_ADDRESS=0x...
+```
 
 ## dWallet Setup
 
 Ink exposes dWallet operations through `ink.dwallet`.
 
-### Create a dWallet Record
+### Development-only dWallet Records
 
 ```ts
 const dwallet = await ink.dwallet.create({
@@ -127,7 +150,7 @@ const dwallet = await ink.dwallet.create({
 });
 ```
 
-In the default local connector, this creates a deterministic development dWallet record. In production, wire `ink.dwallet.create()` to a real Ika provisioning connector once that API is available.
+This uses the default local connector and creates a deterministic development record. It is intentionally not supported by `IkaEvmSigningConnector`; production apps should create the dWallet with Ika, fund the required Sui/Ika objects, refresh presigns, and import the existing dWallet.
 
 ### Import an Existing Ika dWallet
 
@@ -145,8 +168,8 @@ await ink.dwallet.importExisting({
     },
   ],
   metadata: {
-    source: "ika-testnet",
-    signerAddress: "0x04b40c698F241fE2AeE37f9e368A55408070C576",
+    source: "ika",
+    signerAddress: process.env.IKA_ETH_ADDRESS,
   },
 });
 ```

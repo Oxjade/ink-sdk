@@ -13,6 +13,12 @@ The goal is programmable cross-chain execution for DeFi apps, automation, AI age
 - [Integration Guide](docs/INTEGRATION.md) - install, configure, create/import dWallets, call functions, use storage/idempotency, and run the real Ika EVM signing proof.
 - [Real Testnet Checklist](examples/REAL_TESTNET.md) - live proof commands, Ika env shape, and execution requirements.
 
+## Install From npm
+
+```bash
+npm install @ink/sdk @ink/ika-connector
+```
+
 ## Product Line
 
 Ink is a programmable cross-chain function-call SDK.
@@ -105,7 +111,9 @@ const ink = createInkClient({
   projectId: "project_123",
   ika: {
     network: "testnet",
-    connector: new IkaEvmSigningConnector(),
+    connector: new IkaEvmSigningConnector({
+      env: process.env,
+    }),
   },
   chains: [
     { type: "evm", chainId: 56 },
@@ -164,7 +172,7 @@ Create dWallet. Define function. Sign with Ika. Execute across chains. Return re
 - `@ink/evm` now uses real ABI calldata encoding through `ethers.Interface`.
 - `IkaEvmSigningConnector` performs the real Ika EVM signing path for BNB/EVM testnet flows.
 
-Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector.
+Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector. `IkaEvmSigningConnector` is the production Ika/Sui EVM signing connector; it validates the required Ika env vars, uses a real Sui RPC client plus Ika network config, and refuses mock dWallet creation or mock non-EVM signing.
 
 ## Storage and Idempotency
 

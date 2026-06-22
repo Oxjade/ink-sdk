@@ -173,26 +173,90 @@ export type IkaEvmSigningConnectorOptions = {
   onTiming?: (timings: Record<string, number>) => void;
 };
 
-export class IkaEvmSigningConnector extends InMemoryIkaConnector {
+export class IkaEvmSigningConnector implements IkaConnector {
   private readonly env: Record<string, string | undefined>;
   private readonly providerForChain?: (chain: InkChain) => ethers.Provider;
   private readonly onTiming?: (timings: Record<string, number>) => void;
+  private readonly importedWallets = new Map<string, DWalletRecord>();
   private signerPromise?: Promise<RealIkaEthereumSigner>;
 
   constructor(options: IkaEvmSigningConnectorOptions = {}) {
-    super();
     this.env = options.env ?? process.env;
     this.providerForChain = options.providerForChain;
     this.onTiming = options.onTiming;
+    validateIkaEvmSigningEnv(this.env);
   }
 
-  override async sign(input: {
+  async createDWallet(_request: DWalletCreateRequest): Promise<DWalletRecord> {
+    throw new Error(
+      "IkaEvmSigningConnector does not mock or provision dWallets. Create the dWallet with Ika, then call ink.dwallet.importExisting()."
+    );
+  }
+
+  async getDWallet(dWalletId: string): Promise<DWalletRecord> {
+    const imported = this.importedWallets.get(dWalletId);
+    if (imported) return imported;
+
+    if (dWalletId !== this.expectedDWalletId) {
+      throw new Error(`IkaEvmSigningConnector is configured for dWallet ${this.expectedDWalletId}, not ${dWalletId}`);
+    }
+
+    const signer = await this.getSigner();
+    return signer.getDWalletRecord(this.defaultChains);
+  }
+
+  async listDWallets(): Promise<DWalletRecord[]> {
+    const configured = await this.getDWallet(this.expectedDWalletId);
+    const byId = new Map<string, DWalletRecord>([[configured.id, configured]]);
+    for (const wallet of this.importedWallets.values()) byId.set(wallet.id, wallet);
+    return Array.from(byId.values());
+  }
+
+  async getAddress(dWalletId: string, chain: InkChain): Promise<string> {
+    const wallet = await this.getDWallet(dWalletId);
+    const address = wallet.addresses[chain.type];
+    if (!address) {
+      throw new Error(`No ${chain.type} address configured for Ika dWallet ${dWalletId}`);
+    }
+    return address;
+  }
+
+  async linkChains(_dWalletId: string, _chains: InkChain[]): Promise<DWalletRecord> {
+    throw new Error(
+      "IkaEvmSigningConnector cannot link mock chains. Update the real Ika dWallet configuration, then import it again."
+    );
+  }
+
+  async importExisting(request: DWalletImportRequest): Promise<DWalletRecord> {
+    if (request.dWalletId !== this.expectedDWalletId) {
+      throw new Error(`Imported dWallet ${request.dWalletId} does not match configured IKA_DWALLET_ID ${this.expectedDWalletId}`);
+    }
+
+    const chains = request.chains?.length ? request.chains : this.defaultChains;
+    const wallet: DWalletRecord = {
+      id: request.dWalletId,
+      addresses: buildConfiguredAddresses(this.env, chains),
+      supportedChains: chains,
+      metadata: {
+        ...request.metadata,
+        source: "ika",
+        production: true,
+      },
+    };
+    this.importedWallets.set(wallet.id, wallet);
+    return wallet;
+  }
+
+  async sign(input: {
     dWalletId: string;
     targetChain: InkChain;
     payload: SigningPayload;
   }): Promise<ChainSignature> {
     if (input.targetChain.type !== "evm") {
-      return super.sign(input);
+      throw new Error("IkaEvmSigningConnector only supports real EVM signing. Configure a production connector for this chain type.");
+    }
+    if (input.dWalletId !== this.expectedDWalletId) {
+      throw new Error(`IkaEvmSigningConnector is configured for dWallet ${this.expectedDWalletId}, not ${input.dWalletId}`);
     }
 
     const signer = await this.getSigner();
@@ -226,6 +290,24 @@ export class IkaEvmSigningConnector extends InMemoryIkaConnector {
     this.signerPromise ??= createRealIkaEthereumSignerFromEnv(this.env);
     return this.signerPromise;
   }
+
+  private get expectedDWalletId(): string {
+    return requiredValue(this.env, "IKA_DWALLET_ID");
+  }
+
+  private get defaultChains(): InkChain[] {
+    const chainId = cleanEnvValue(this.env.IKA_EVM_CHAIN_ID)
+      ? Number(cleanEnvValue(this.env.IKA_EVM_CHAIN_ID))
+      : undefined;
+    return chainId
+      ? [{
+          type: "evm",
+          chainId,
+          rpcUrl: cleanEnvValue(this.env.IKA_EVM_RPC),
+          explorerUrl: cleanEnvValue(this.env.IKA_EVM_EXPLORER_URL),
+        }]
+      : [];
+  }
 }
 
 type RealIkaEthereumSignerOptions = {
@@ -256,6 +338,29 @@ type RealIkaEthereumSignerOptions = {
 
 class RealIkaEthereumSigner {
   constructor(private readonly options: RealIkaEthereumSignerOptions) {}
+
+  async getDWalletRecord(chains: InkChain[]): Promise<DWalletRecord> {
+    const dWallet = await this.options.ikaClient.getDWalletInParticularState(
+      this.options.dWalletId,
+      "Active",
+      { timeout: this.options.signTimeoutMs ?? 120000 },
+    );
+
+    return {
+      id: this.options.dWalletId,
+      addresses: buildConfiguredAddresses(
+        { IKA_ETH_ADDRESS: this.options.ethereumAddress },
+        chains,
+      ),
+      supportedChains: chains,
+      metadata: {
+        source: "ika",
+        production: true,
+        state: dWallet?.state?.$kind ?? "Active",
+        kind: dWallet?.kind,
+      },
+    };
+  }
 
   async signTransaction(unsignedTx: Record<string, unknown>, context: {
     provider: ethers.Provider;
@@ -417,20 +522,7 @@ class RealIkaEthereumSigner {
 async function createRealIkaEthereumSignerFromEnv(
   env: Record<string, string | undefined>,
 ): Promise<RealIkaEthereumSigner> {
-  const required = [
-    "IKA_DWALLET_ID",
-    "IKA_DWALLET_CAP_ID",
-    "IKA_PRESIGN_ID",
-    "IKA_UNVERIFIED_PRESIGN_CAP_ID",
-    "IKA_COIN_ID",
-    "IKA_SUI_COIN_ID",
-    "IKA_ETH_ADDRESS",
-    "IKA_SUI_PRIVATE_KEY",
-  ];
-  const missing = required.filter((key) => !env[key]);
-  if (missing.length) {
-    throw new Error(`Missing required Ika signing env vars: ${missing.join(", ")}`);
-  }
+  validateIkaEvmSigningEnv(env);
 
   const [ikaSdk, suiJsonRpcModule, suiTxModule, ed25519Module, cryptographyModule] =
     await Promise.all([
@@ -443,7 +535,7 @@ async function createRealIkaEthereumSignerFromEnv(
 
   const network = (env.IKA_NETWORK || "testnet") as "testnet" | "mainnet" | "devnet" | "localnet";
   const suiRpcUrl =
-    env.IKA_SUI_RPC || suiJsonRpcModule.getJsonRpcFullnodeUrl?.(network);
+    cleanEnvValue(env.IKA_SUI_RPC) || suiJsonRpcModule.getJsonRpcFullnodeUrl?.(network);
   if (!suiRpcUrl) {
     throw new Error("IKA_SUI_RPC is required when the Sui SDK cannot infer a fullnode URL");
   }
@@ -526,6 +618,23 @@ async function createRealIkaEthereumSignerFromEnv(
     signTimeoutMs: env.IKA_SIGN_TIMEOUT_MS ? Number(env.IKA_SIGN_TIMEOUT_MS) : undefined,
     signPollIntervalMs: env.IKA_SIGN_POLL_INTERVAL_MS ? Number(env.IKA_SIGN_POLL_INTERVAL_MS) : undefined,
   });
+}
+
+function validateIkaEvmSigningEnv(env: Record<string, string | undefined>): void {
+  const required = [
+    "IKA_DWALLET_ID",
+    "IKA_DWALLET_CAP_ID",
+    "IKA_PRESIGN_ID",
+    "IKA_UNVERIFIED_PRESIGN_CAP_ID",
+    "IKA_COIN_ID",
+    "IKA_SUI_COIN_ID",
+    "IKA_ETH_ADDRESS",
+    "IKA_SUI_PRIVATE_KEY",
+  ];
+  const missing = required.filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Missing required Ika signing env vars: ${missing.join(", ")}`);
+  }
 }
 
 async function prepareUnsignedTransaction(
@@ -702,6 +811,19 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(globalThis.Buffer
     ? Buffer.from(value, "base64")
     : atob(value).split("").map((char) => char.charCodeAt(0)));
+}
+
+function buildConfiguredAddresses(
+  env: Record<string, string | undefined>,
+  chains: InkChain[],
+): ChainAddressMap {
+  const addresses: ChainAddressMap = {};
+  for (const chain of chains) {
+    if (chain.type === "evm") {
+      addresses.evm = requiredValue(env, "IKA_ETH_ADDRESS");
+    }
+  }
+  return addresses;
 }
 
 function requiredValue(env: Record<string, string | undefined>, key: string): string {
