@@ -4,7 +4,7 @@ Ink is a developer-first programmable cross-chain function execution SDK powered
 
 Ink lets developers call blockchain functions through one SDK while Ika/dWallet provides programmable signing. A developer defines the target chain, contract/program/module, function, args, and signing method; Ink builds the native transaction for that chain, routes it through Ika/dWallet signing, attaches the returned signature, executes or returns the signed transaction, and gives back a clean receipt.
 
-Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it builds ABI function calls, estimates gas, creates the EVM transaction, gets an Ika-backed secp256k1 signature, serializes the signed transaction, and can broadcast it. For Solana, the SDK is structured around program instruction creation, message serialization, dWallet-backed signing, transaction send, and confirmation. For Sui, it supports Move-call style execution and Ika/dWallet coordination through the Sui/Ika testnet environment.
+Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it builds ABI function calls, estimates gas, creates the EVM transaction, gets an Ika-backed secp256k1 signature, serializes the signed transaction, and can broadcast it. The current real Ika connector is EVM-only. The Sui adapter is a Move-call payload foundation; production Sui execution requires a native Sui adapter/RPC hooks or a future Ika Sui connector.
 
 The goal is programmable cross-chain execution for DeFi apps, automation, AI agents, vaults, protocols, and developer tools that need to perform real actions across multiple chains without rebuilding signing and transaction logic for every network.
 
@@ -25,7 +25,7 @@ Ink is a programmable cross-chain function-call SDK.
 
 Sharper:
 
-EVM by chain ID. Solana by program instruction. Sui by Move call. Ika signs. Ink executes.
+EVM by chain ID. Solana by program instruction. Sui by Move call. Ika signs EVM today. Ink coordinates the action lifecycle.
 
 ## Packages
 
@@ -34,7 +34,7 @@ This repository is organized as a TypeScript workspace:
 - `@ink/sdk` - core client, `createInkClient()`, `ink.call()`, `ink.batch()`, lifecycle events, status, receipts, chain configuration, and dWallet facade.
 - `@ink/evm` - EVM adapter for ABI calls, transaction building, signing payloads, signature attachment, broadcast, and receipts.
 - `@ink/solana` - Solana adapter for native program instructions, message serialization, signature attachment, send, confirm, and receipts.
-- `@ink/sui` - Sui adapter for Move calls and programmable transaction execution.
+- `@ink/sui` - Sui adapter foundation for Move-call payloads. Real Sui execution requires native RPC/signing hooks.
 - `@ink/ika-connector` - Ika/dWallet connector for provisioning, metadata, chain addresses, signing requests, and signature return.
 - `@ink/react` - React bindings for apps that want hooks around the core SDK.
 
@@ -227,9 +227,9 @@ The proof script demonstrates the current end-to-end SDK path for all supported 
 1. Create a dWallet through Ink.
 2. Call an EVM contract function.
 3. Call a Solana program instruction.
-4. Call a Sui Move function.
+4. Build a Sui Move-call-shaped action.
 5. Mock sign each native transaction payload through the in-memory Ika connector.
-6. Return and assert executed receipts.
+6. Return and assert executed receipts only for paths backed by real RPC confirmation.
 7. Persist dWallets, statuses, receipts, and idempotency mappings in `.ink/proof-store.json`.
 
 The example lives at `examples/proof-execution.mjs`.

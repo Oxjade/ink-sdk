@@ -1,6 +1,6 @@
 {
   "name": "@ink-sdk/sui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sui adapter for Ink cross-chain function execution.",
   "type": "module",
   "main": "dist/index.js",
@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -20,6 +22,6 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@ink-sdk/types": "0.1.0"
+    "@ink-sdk/types": "0.1.1"
   }
 }

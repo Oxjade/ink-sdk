@@ -9,6 +9,12 @@ const evmChain = {
   explorerUrl: "https://testnet.bscscan.com",
 };
 
+const suiChain = {
+  type: "sui",
+  network: "testnet",
+  explorerUrl: "https://suiscan.xyz/testnet",
+};
+
 const transferAbi = [
   {
     type: "function",
@@ -118,5 +124,35 @@ test("invalid EVM targets fail before signing", async () => {
   await assert.rejects(
     () => ink.call(call),
     /Invalid EVM contract address/,
+  );
+});
+
+test("default Sui adapter refuses fake execution without real RPC hooks", async () => {
+  const ink = createInkClient({
+    chains: [suiChain],
+  });
+  const wallet = await ink.dwallet.create({
+    name: "sui-wallet",
+    chains: [suiChain],
+  });
+
+  await assert.rejects(
+    () => ink.call({
+      targetChain: suiChain,
+      target: {
+        packageId: "0x2",
+        module: "coin",
+        functionName: "value",
+        arguments: [],
+      },
+      signing: {
+        provider: "ika",
+        dWalletId: wallet.id,
+      },
+      execution: {
+        waitForReceipt: true,
+      },
+    }),
+    /Sui submitTransaction RPC hook is required/,
   );
 });

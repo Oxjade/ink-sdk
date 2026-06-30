@@ -68,16 +68,18 @@ export class SuiAdapter implements ChainAdapter<SuiChain> {
     if (this.rpc.submitTransaction) {
       return this.rpc.submitTransaction(signedTransaction, params.targetChain);
     }
-    return {
-      digest: createActionId("sui_digest"),
-      raw: signedTransaction,
-    };
+    throw new Error(
+      "Sui submitTransaction RPC hook is required for real Sui execution. The default SuiAdapter only builds the Move-call payload shape.",
+    );
   }
 
   async waitForReceipt(result: InkTransactionResult, params: InkCallParams<SuiChain>): Promise<InkReceipt> {
-    const receipt = this.rpc.waitForTransaction
-      ? await this.rpc.waitForTransaction(result, params.targetChain)
-      : { confirmed: true };
+    if (!this.rpc.waitForTransaction) {
+      throw new Error(
+        "Sui waitForTransaction RPC hook is required before a Sui action can be marked executed.",
+      );
+    }
+    const receipt = await this.rpc.waitForTransaction(result, params.targetChain);
     return {
       ...this.formatResult(result, params),
       status: "executed",

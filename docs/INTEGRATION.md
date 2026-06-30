@@ -1,6 +1,6 @@
 # Ink SDK Integration Guide
 
-Ink is a developer-first SDK for programmable cross-chain execution. Developers bring the chain, function, and arguments; Ink builds the native transaction, routes the signing payload to Ika/dWallet, attaches the returned signature, submits when configured, and returns a receipt.
+Ink is a developer-first SDK for programmable cross-chain execution. Developers bring the chain, function, and arguments; Ink builds the chain action payload, routes the signing payload to a connector, attaches the returned signature or signed transaction, submits when a real adapter is configured, and returns a receipt.
 
 The core API is:
 
@@ -39,7 +39,7 @@ Ink is designed for applications that need to perform real actions across chains
 | Lifecycle events | Implemented |
 | Solana adapter shape | Implemented as adapter foundation |
 | Native Solana signing/broadcast | Integration pending |
-| Sui adapter shape | Implemented as adapter foundation |
+| Sui adapter shape | Implemented as adapter foundation; no fake execution fallback |
 | Native Sui Move execution/broadcast | Integration pending |
 | Real Ika dWallet provisioning from `ink.dwallet.create()` | Integration pending |
 
@@ -294,7 +294,7 @@ await ink.call({
 });
 ```
 
-Production Sui support still needs native programmable transaction construction and execution against a real package.
+Production Sui support still needs native programmable transaction construction, signing, and execution against a real package. The default Sui adapter now refuses to generate fake digests or mark actions executed without RPC hooks.
 
 ## Use Persistent Storage
 
