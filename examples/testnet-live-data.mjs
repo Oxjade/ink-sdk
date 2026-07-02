@@ -1,4 +1,4 @@
-import { InkClient } from "@ink/sdk";
+import { InkClient } from "@ink-sdk/sdk";
 
 const config = {
   evm: {
@@ -194,4 +194,3 @@ function assertLiveData(evidence) {
     throw new Error("Sui chain identifier missing");
   }
 }
-

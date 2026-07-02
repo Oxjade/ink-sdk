@@ -9,7 +9,7 @@ import type {
   InkTransactionResult,
   SigningPayload,
 } from "@ink-sdk/types";
-import { Interface, isAddress, type InterfaceAbi } from "ethers";
+import { ethers, Interface, isAddress, type InterfaceAbi } from "ethers";
 
 export type EvmRpc = {
   estimateGas?: (tx: EvmUnsignedTransaction) => Promise<string>;
@@ -23,6 +23,18 @@ export type EvmAdapterOptions = {
   rpc?: EvmRpc;
   fromAddressResolver?: (params: InkCallParams<EvmChain>) => Promise<string>;
 };
+
+export type EthersEvmRpcOptions = {
+  chain: EvmChain;
+  rpcUrl?: string;
+  provider?: ethers.Provider;
+  signerAddress: string;
+  broadcast?: boolean;
+  confirmations?: number;
+  timeoutMs?: number;
+};
+
+export type EthersEvmAdapterOptions = EthersEvmRpcOptions;
 
 export type EvmUnsignedTransaction = {
   chainId: number;
@@ -166,9 +178,95 @@ export class EvmAdapter implements ChainAdapter<EvmChain> {
   }
 }
 
+export function createEthersEvmAdapter(options: EthersEvmAdapterOptions): EvmAdapter {
+  const signerAddress = normalizeEvmAddress(options.signerAddress, "signerAddress");
+  return new EvmAdapter({
+    fromAddressResolver: async () => signerAddress,
+    rpc: createEthersEvmRpc({
+      ...options,
+      signerAddress,
+    }),
+  });
+}
+
+export function createEthersEvmRpc(options: EthersEvmRpcOptions): EvmRpc {
+  const provider = resolveProvider(options);
+  const signerAddress = normalizeEvmAddress(options.signerAddress, "signerAddress");
+  const broadcast = options.broadcast ?? false;
+  const confirmations = options.confirmations ?? 1;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+
+  return {
+    getNonce: async (address) => provider.getTransactionCount(address, "pending"),
+    getGasPrice: async () => {
+      const feeData = await provider.getFeeData();
+      return String(feeData.gasPrice ?? feeData.maxFeePerGas ?? 1_000_000_000n);
+    },
+    estimateGas: async (tx) => {
+      const request = {
+        from: tx.from ?? signerAddress,
+        to: tx.to,
+        data: tx.data,
+        value: BigInt(tx.value),
+      };
+      return String(await provider.estimateGas(request));
+    },
+    broadcastRawTransaction: async (rawTransaction) => {
+      const parsed = ethers.Transaction.from(rawTransaction);
+      const hash = parsed.hash ?? undefined;
+      if (!broadcast) {
+        return {
+          hash,
+          raw: {
+            broadcastSkipped: true,
+            reason: "EVM broadcast is disabled. Set broadcast: true to submit this signed transaction.",
+          },
+        };
+      }
+      const sent = await provider.broadcastTransaction(rawTransaction);
+      return {
+        hash: sent.hash,
+        raw: sent,
+      };
+    },
+    waitForReceipt: async (result) => {
+      if (!broadcast || !result.hash) {
+        return {
+          confirmed: false,
+          raw: result.raw,
+        };
+      }
+      const receipt = await provider.waitForTransaction(result.hash, confirmations, timeoutMs);
+      return {
+        confirmed: receipt?.status === 1,
+        blockNumber: receipt?.blockNumber,
+        gasUsed: receipt?.gasUsed?.toString(),
+        raw: receipt,
+      };
+    },
+  };
+}
+
 export function encodeFunctionCall(abi: unknown[], functionName: string, args: unknown[]): string {
   const iface = new Interface(abi as InterfaceAbi);
   return iface.encodeFunctionData(functionName, args as readonly unknown[]);
+}
+
+function resolveProvider(options: EthersEvmRpcOptions): ethers.Provider {
+  if (options.provider) return options.provider;
+  if (!options.rpcUrl) {
+    throw new Error("createEthersEvmRpc requires either provider or rpcUrl");
+  }
+  return new ethers.JsonRpcProvider(options.rpcUrl, options.chain.chainId, {
+    staticNetwork: true,
+  });
+}
+
+function normalizeEvmAddress(address: string, name: string): string {
+  if (!isAddress(address)) {
+    throw new Error(`Invalid EVM ${name}: ${address}`);
+  }
+  return ethers.getAddress(address);
 }
 
 function validateEvmParams(params: InkCallParams<EvmChain>): void {

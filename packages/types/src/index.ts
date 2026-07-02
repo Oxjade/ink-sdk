@@ -111,6 +111,28 @@ export type InkActionStatus =
   | "broadcast_failed"
   | "failed";
 
+export type InkPolicyConfig = {
+  allowedChains?: InkChain[];
+  allowedEvmContracts?: string[];
+  allowedSolanaPrograms?: string[];
+  allowedSuiPackages?: string[];
+  allowedFunctions?: string[];
+  maxEvmValue?: string;
+  requireIdempotencyKey?: boolean;
+};
+
+export type InkPolicyViolation = {
+  code:
+    | "chain_not_allowed"
+    | "evm_contract_not_allowed"
+    | "solana_program_not_allowed"
+    | "sui_package_not_allowed"
+    | "function_not_allowed"
+    | "evm_value_exceeds_max"
+    | "idempotency_required";
+  message: string;
+};
+
 export type InkTransactionResult = {
   hash?: string;
   digest?: string;
@@ -201,6 +223,7 @@ export interface IkaConnector {
 export type InkClientOptions = {
   mode?: "development" | "production";
   projectId?: string;
+  policies?: InkPolicyConfig;
   ika?: {
     network?: string;
     connector?: IkaConnector;

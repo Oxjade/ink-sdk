@@ -16,7 +16,7 @@ The goal is programmable cross-chain execution for DeFi apps, automation, AI age
 ## Install From npm
 
 ```bash
-npm install @ink/sdk @ink/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
 ```
 
 ## Product Line
@@ -31,12 +31,12 @@ EVM by chain ID. Solana by program instruction. Sui by Move call. Ika signs EVM 
 
 This repository is organized as a TypeScript workspace:
 
-- `@ink/sdk` - core client, `createInkClient()`, `ink.call()`, `ink.batch()`, lifecycle events, status, receipts, chain configuration, and dWallet facade.
-- `@ink/evm` - EVM adapter for ABI calls, transaction building, signing payloads, signature attachment, broadcast, and receipts.
-- `@ink/solana` - Solana adapter for native program instructions, message serialization, signature attachment, send, confirm, and receipts.
-- `@ink/sui` - Sui adapter foundation for Move-call payloads. Real Sui execution requires native RPC/signing hooks.
-- `@ink/ika-connector` - Ika/dWallet connector for provisioning, metadata, chain addresses, signing requests, and signature return.
-- `@ink/react` - React bindings for apps that want hooks around the core SDK.
+- `@ink-sdk/sdk` - core client, `createInkClient()`, `ink.call()`, `ink.batch()`, lifecycle events, status, receipts, chain configuration, policy checks, and dWallet facade.
+- `@ink-sdk/evm` - EVM adapter for ABI calls, transaction building, ethers RPC helpers, signing payloads, signature attachment, broadcast, and receipts.
+- `@ink-sdk/solana` - Solana adapter foundation for program instruction payloads. Real Solana execution requires native RPC/signing hooks.
+- `@ink-sdk/sui` - Sui adapter foundation for Move-call payloads. Real Sui execution requires native RPC/signing hooks.
+- `@ink-sdk/ika-connector` - Ika/dWallet connectors for EVM secp256k1 signing plus Solana/Sui ED25519 dWallet creation/signing.
+- `@ink-sdk/react` - React bindings for apps that want hooks around the core SDK.
 
 ## Core Flow
 
@@ -81,7 +81,8 @@ Internal execution:
 Ink supports two dWallet modes:
 
 - Existing dWallet mode: pass an already-created `dWalletId`.
-- Custom dWallet mode: create/provision a dWallet through Ink.
+- Development dWallet mode: create a local mock/dev dWallet record through Ink.
+- Production dWallet mode: create/provision the real dWallet with Ika, then import it with `ink.dwallet.importExisting()`.
 
 ```ts
 const dwallet = await ink.dwallet.create({
@@ -103,8 +104,9 @@ const dwallet = await ink.dwallet.create({
 ## Final Developer Goal
 
 ```ts
-import { createInkClient } from "@ink/sdk";
-import { IkaEvmSigningConnector } from "@ink/ika-connector";
+import { createEthersEvmAdapter } from "@ink-sdk/evm";
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { createInkClient } from "@ink-sdk/sdk";
 
 const ink = createInkClient({
   mode: "production",
@@ -120,19 +122,34 @@ const ink = createInkClient({
     { type: "solana", cluster: "devnet" },
     { type: "sui", network: "testnet" },
   ],
+  adapters: [
+    createEthersEvmAdapter({
+      chain: {
+        type: "evm",
+        chainId: 56,
+        rpcUrl: "https://bsc-dataseed.binance.org",
+        explorerUrl: "https://bscscan.com",
+      },
+      rpcUrl: "https://bsc-dataseed.binance.org",
+      signerAddress: process.env.IKA_ETH_ADDRESS!,
+      broadcast: false,
+    }),
+  ],
 });
 
 ink.on("action:status", ({ actionId, status }) => {
   console.info("[ink]", actionId, status);
 });
 
-const dwallet = await ink.dwallet.create({
-  name: "project-executor",
+const dwallet = await ink.dwallet.importExisting({
+  dWalletId: process.env.IKA_DWALLET_ID!,
   chains: [
     { type: "evm", chainId: 56 },
-    { type: "solana", cluster: "devnet" },
-    { type: "sui", network: "testnet" },
   ],
+  metadata: {
+    source: "ika",
+    signerAddress: process.env.IKA_ETH_ADDRESS,
+  },
 });
 
 const receipt = await ink.call({
@@ -157,7 +174,7 @@ const receipt = await ink.call({
 });
 ```
 
-Create dWallet. Define function. Sign with Ika. Execute across chains. Return receipt.
+Import real Ika dWallet. Define function. Sign with Ika. Execute or return the signed EVM transaction. Return receipt.
 
 ## Current SDK Capabilities
 
@@ -169,15 +186,85 @@ Create dWallet. Define function. Sign with Ika. Execute across chains. Return re
 - `ink.dwallet.create()`, `ink.dwallet.importExisting()`, `ink.dwallet.get()`, `ink.dwallet.list()`, `ink.dwallet.getAddress()`, and `ink.dwallet.linkChains()` provide the dWallet facade.
 - Optional `storage` lets apps persist receipts, statuses, idempotency keys, and dWallet metadata.
 - `createJsonFileStorage(path)` provides a Node-friendly JSON storage implementation for local tools and examples.
-- `@ink/evm` now uses real ABI calldata encoding through `ethers.Interface`.
+- `@ink-sdk/evm` now uses real ABI calldata encoding through `ethers.Interface`.
+- `createEthersEvmAdapter()` and `createEthersEvmRpc()` provide built-in ethers nonce, gas, broadcast, and receipt hooks.
 - `IkaEvmSigningConnector` performs the real Ika EVM signing path for BNB/EVM testnet flows.
+- `IkaSolanaDWalletConnector` can create/import real Ika ED25519 dWallets, derive Solana addresses, and sign `solana-message` payloads.
+- `IkaSuiDWalletConnector` can create/import real Ika ED25519 dWallets, derive Sui addresses, and sign Sui transaction bytes with Sui transaction intent.
+- Optional `policies` let apps allowlist chains, targets, functions, EVM value, and require idempotency before signing.
 
-Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector. `IkaEvmSigningConnector` is the production Ika/Sui EVM signing connector; it validates the required Ika env vars, uses a real Sui RPC client plus Ika network config, and refuses mock dWallet creation or mock non-EVM signing.
+Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector. `IkaEvmSigningConnector` is the production Ika/Sui EVM signing connector. `IkaSolanaDWalletConnector` and `IkaSuiDWalletConnector` are production ED25519 connectors. Full Solana/Sui execution still requires adapters that provide real serialized transaction/message bytes plus submit/confirm hooks.
+
+## Real Solana dWallets
+
+```ts
+import { IkaSolanaDWalletConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
+
+const ink = new InkClient({
+  mode: "production",
+  ika: {
+    network: "testnet",
+    connector: new IkaSolanaDWalletConnector({ env: process.env }),
+  },
+  chains: [{ type: "solana", cluster: "devnet" }],
+});
+
+const dwallet = await ink.dwallet.create({
+  name: "solana-ed25519-wallet",
+  chains: [{ type: "solana", cluster: "devnet" }],
+});
+
+const solanaAddress = await ink.dwallet.getAddress(dwallet.id, {
+  type: "solana",
+  cluster: "devnet",
+});
+```
+
+Required env for creation:
+
+```bash
+IKA_NETWORK=testnet
+IKA_SUI_RPC=https://sui-testnet-rpc.publicnode.com
+IKA_SUI_PRIVATE_KEY=suiprivkey...
+IKA_COIN_ID=0x...
+IKA_SUI_COIN_ID=0x...
+```
+
+For stable production access, also provide `IKA_SOLANA_USER_SHARE_ENCRYPTION_KEYS_B64`; otherwise the connector creates an in-memory user-share key for the current process only.
+
+## Real Sui dWallets
+
+```ts
+import { IkaSuiDWalletConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
+
+const ink = new InkClient({
+  mode: "production",
+  ika: {
+    network: "testnet",
+    connector: new IkaSuiDWalletConnector({ env: process.env }),
+  },
+  chains: [{ type: "sui", network: "testnet" }],
+});
+
+const dwallet = await ink.dwallet.create({
+  name: "sui-ed25519-wallet",
+  chains: [{ type: "sui", network: "testnet" }],
+});
+
+const suiAddress = await ink.dwallet.getAddress(dwallet.id, {
+  type: "sui",
+  network: "testnet",
+});
+```
+
+The Sui connector signs `sui-transaction` bytes using Sui transaction intent and returns `metadata.serializedSignature`, which a real Sui submit hook can pass to Sui RPC with the transaction bytes.
 
 ## Storage and Idempotency
 
 ```ts
-import { InkClient, createJsonFileStorage } from "@ink/sdk";
+import { InkClient, createJsonFileStorage } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
   storage: await createJsonFileStorage(".ink/ink-store.json"),
@@ -282,4 +369,4 @@ The repo now contains the SDK hooks for the full product path. Remaining product
 - Automatic production presign pools instead of example-level refresh scripts.
 - Fully native Solana transaction serialization, dWallet signing, and broadcast.
 - Fully native Sui programmable transaction construction, signing, and broadcast.
-- Policy controls for spending limits, transaction simulation, replay protection, and scoped signing.
+- Transaction simulation, richer policy backends, replay protection, and scoped on-chain approvals.

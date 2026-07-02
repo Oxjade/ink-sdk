@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ethers } from "ethers";
-import { EvmAdapter } from "@ink/evm";
-import { IkaEvmSigningConnector } from "@ink/ika-connector";
-import { InkClient } from "@ink/sdk";
+import { createEthersEvmAdapter } from "@ink-sdk/evm";
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
 
 const envPath = path.resolve("..", ".env");
 if (process.env.INK_AUTO_REFRESH_IKA_PRESIGN === "true") {
@@ -39,55 +39,11 @@ const provider = new ethers.JsonRpcProvider(chain.rpcUrl, chain.chainId, {
 });
 const signerAddress = ethers.getAddress(env.IKA_ETH_ADDRESS);
 
-const adapter = new EvmAdapter({
-  fromAddressResolver: async () => signerAddress,
-  rpc: {
-    getNonce: async (address) => provider.getTransactionCount(address, "pending"),
-    getGasPrice: async () => {
-      const feeData = await provider.getFeeData();
-      return String(feeData.gasPrice ?? 1_000_000_000n);
-    },
-    estimateGas: async (tx) => {
-      const request = {
-        from: signerAddress,
-        to: tx.to,
-        data: tx.data,
-        value: BigInt(tx.value),
-      };
-      return String(await provider.estimateGas(request));
-    },
-    broadcastRawTransaction: async (rawTransaction) => {
-      if (env.INK_BROADCAST_IKA_SIGNED_TX !== "true") {
-        return {
-          hash: ethers.Transaction.from(rawTransaction).hash ?? undefined,
-          raw: {
-            broadcastSkipped: true,
-            reason: "Set INK_BROADCAST_IKA_SIGNED_TX=true to broadcast this real Ika-signed transaction.",
-          },
-        };
-      }
-      const sent = await provider.broadcastTransaction(rawTransaction);
-      return {
-        hash: sent.hash,
-        raw: sent,
-      };
-    },
-    waitForReceipt: async (result) => {
-      if (!result.hash || env.INK_BROADCAST_IKA_SIGNED_TX !== "true") {
-        return {
-          confirmed: false,
-          raw: result.raw,
-        };
-      }
-      const receipt = await provider.waitForTransaction(result.hash);
-      return {
-        confirmed: receipt?.status === 1,
-        blockNumber: receipt?.blockNumber,
-        gasUsed: receipt?.gasUsed?.toString(),
-        raw: receipt,
-      };
-    },
-  },
+const adapter = createEthersEvmAdapter({
+  chain,
+  provider,
+  signerAddress,
+  broadcast: env.INK_BROADCAST_IKA_SIGNED_TX === "true",
 });
 
 const ink = new InkClient({

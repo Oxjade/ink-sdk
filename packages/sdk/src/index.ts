@@ -13,6 +13,8 @@ import type {
   InkChain,
   InkClientOptions,
   InkEstimate,
+  InkPolicyConfig,
+  InkPolicyViolation,
   InkReceipt,
   InkStorage,
 } from "@ink-sdk/types";
@@ -43,6 +45,8 @@ export type {
   InkChain,
   InkClientOptions,
   InkEstimate,
+  InkPolicyConfig,
+  InkPolicyViolation,
   InkReceipt,
   InkStorage,
   SigningConfig,
@@ -65,6 +69,7 @@ export class InkClient {
   private chains: InkChain[];
   private readonly adapters: ChainAdapter[];
   private readonly ika: IkaConnector;
+  private readonly policies?: InkPolicyConfig;
   private readonly storage?: InkStorage;
   private readonly statuses = new Map<string, InkActionStatus>();
   private readonly receipts = new Map<string, InkReceipt>();
@@ -83,6 +88,7 @@ export class InkClient {
       new SuiAdapter(),
     ];
     this.ika = options.ika?.connector ?? new InMemoryIkaConnector();
+    this.policies = options.policies;
     this.storage = options.storage;
 
     this.dwallet = {
@@ -120,18 +126,23 @@ export class InkClient {
     validateCallParams(params);
 
     const idempotencyKey = params.execution?.idempotencyKey;
-    if (idempotencyKey) {
-      const existing = await this.getReceiptByIdempotencyKey(idempotencyKey);
-      if (existing) return existing;
-    }
-
-    const adapter = this.getAdapter(params.targetChain);
-    this.ensureConfigured(params.targetChain);
-
-    const built = await adapter.buildTransaction(params as never);
-    await this.setStatus(built.actionId, "built");
+    let builtActionId: string | undefined = createActionId("preflight");
 
     try {
+      this.enforcePolicies(params);
+
+      if (idempotencyKey) {
+        const existing = await this.getReceiptByIdempotencyKey(idempotencyKey);
+        if (existing) return existing;
+      }
+
+      const adapter = this.getAdapter(params.targetChain);
+      this.ensureConfigured(params.targetChain);
+
+      const built = await adapter.buildTransaction(params as never);
+      builtActionId = built.actionId;
+      await this.setStatus(built.actionId, "built");
+
       const signingPayload = await adapter.getSigningPayload(built);
       await this.setStatus(built.actionId, "signing");
 
@@ -159,13 +170,17 @@ export class InkClient {
       return normalizedReceipt;
     } catch (error) {
       const normalizedError = error instanceof Error ? error : new Error(String(error));
-      await this.setStatus(
-        built.actionId,
-        /broadcast|transaction|receipt/i.test(normalizedError.message)
-          ? "broadcast_failed"
-          : "sign_failed"
-      );
-      this.emit("action:error", { actionId: built.actionId, error: normalizedError });
+      if (builtActionId) {
+        await this.setStatus(
+          builtActionId,
+          normalizedError.name === "InkPolicyError"
+            ? "failed"
+            : /broadcast|transaction|receipt/i.test(normalizedError.message)
+              ? "broadcast_failed"
+              : "sign_failed"
+        );
+      }
+      this.emit("action:error", { actionId: builtActionId, error: normalizedError });
       throw normalizedError;
     }
   }
@@ -285,6 +300,75 @@ export class InkClient {
     }
   }
 
+  private enforcePolicies(params: InkCallParams): void {
+    const policies = this.policies;
+    if (!policies) return;
+
+    if (policies.requireIdempotencyKey && !params.execution?.idempotencyKey?.trim()) {
+      throw new InkPolicyError({
+        code: "idempotency_required",
+        message: "Ink policy rejected call: execution.idempotencyKey is required",
+      });
+    }
+
+    if (policies.allowedChains?.length && !policies.allowedChains.some((chain) => sameChain(chain, params.targetChain))) {
+      throw new InkPolicyError({
+        code: "chain_not_allowed",
+        message: `Ink policy rejected call: chain is not allowed (${describeChain(params.targetChain)})`,
+      });
+    }
+
+    const functionName = getTargetFunctionName(params);
+    if (policies.allowedFunctions?.length && !policies.allowedFunctions.includes(functionName)) {
+      throw new InkPolicyError({
+        code: "function_not_allowed",
+        message: `Ink policy rejected call: function is not allowed (${functionName})`,
+      });
+    }
+
+    if (params.targetChain.type === "evm") {
+      const target = params.target as { contract: string; value?: string };
+      if (
+        policies.allowedEvmContracts?.length &&
+        !policies.allowedEvmContracts.some((contract) => contract.toLowerCase() === target.contract.toLowerCase())
+      ) {
+        throw new InkPolicyError({
+          code: "evm_contract_not_allowed",
+          message: `Ink policy rejected call: EVM contract is not allowed (${target.contract})`,
+        });
+      }
+      if (
+        policies.maxEvmValue !== undefined &&
+        BigInt(target.value ?? "0") > BigInt(policies.maxEvmValue)
+      ) {
+        throw new InkPolicyError({
+          code: "evm_value_exceeds_max",
+          message: `Ink policy rejected call: EVM value exceeds max (${target.value ?? "0"} > ${policies.maxEvmValue})`,
+        });
+      }
+    }
+
+    if (params.targetChain.type === "solana") {
+      const target = params.target as { programId: string };
+      if (policies.allowedSolanaPrograms?.length && !policies.allowedSolanaPrograms.includes(target.programId)) {
+        throw new InkPolicyError({
+          code: "solana_program_not_allowed",
+          message: `Ink policy rejected call: Solana program is not allowed (${target.programId})`,
+        });
+      }
+    }
+
+    if (params.targetChain.type === "sui") {
+      const target = params.target as { packageId: string };
+      if (policies.allowedSuiPackages?.length && !policies.allowedSuiPackages.includes(target.packageId)) {
+        throw new InkPolicyError({
+          code: "sui_package_not_allowed",
+          message: `Ink policy rejected call: Sui package is not allowed (${target.packageId})`,
+        });
+      }
+    }
+  }
+
   private emit<TEvent extends InkClientEventName>(
     eventName: TEvent,
     event: InkClientEventMap[TEvent],
@@ -297,6 +381,16 @@ export class InkClient {
 
 export function createInkClient(options: InkClientOptions = {}): InkClient {
   return new InkClient(options);
+}
+
+export class InkPolicyError extends Error {
+  readonly violation: InkPolicyViolation;
+
+  constructor(violation: InkPolicyViolation) {
+    super(violation.message);
+    this.name = "InkPolicyError";
+    this.violation = violation;
+  }
 }
 
 export async function createJsonFileStorage(filePath: string): Promise<InkStorage> {
@@ -387,6 +481,17 @@ function describeChain(chain: InkChain): string {
   if (chain.type === "evm") return `evm:${chain.chainId}`;
   if (chain.type === "solana") return `solana:${chain.cluster}`;
   return `sui:${chain.network}`;
+}
+
+function getTargetFunctionName(params: InkCallParams): string {
+  if (params.targetChain.type === "solana") {
+    return (params.target as { instruction: string }).instruction;
+  }
+  return (params.target as { functionName: string }).functionName;
+}
+
+function createActionId(prefix: string): string {
+  return `ink_${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function validateCallParams(params: InkCallParams): void {

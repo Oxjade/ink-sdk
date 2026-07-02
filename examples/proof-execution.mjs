@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { InkClient, createJsonFileStorage } from "@ink/sdk";
+import { EvmAdapter } from "@ink-sdk/evm";
+import { SolanaAdapter } from "@ink-sdk/solana";
+import { SuiAdapter } from "@ink-sdk/sui";
+import { InkClient, createJsonFileStorage } from "@ink-sdk/sdk";
 
 const chains = [
   {
@@ -26,6 +29,31 @@ const ink = new InkClient({
     network: "mocknet",
   },
   chains,
+  adapters: [
+    new EvmAdapter(),
+    new SolanaAdapter({
+      sendTransaction: async (transaction) => ({
+        signature: `mock_solana_${Date.now().toString(36)}`,
+        raw: transaction,
+      }),
+      confirmTransaction: async (result) => ({
+        confirmed: true,
+        slot: 1,
+        raw: result,
+      }),
+    }),
+    new SuiAdapter({
+      submitTransaction: async (transaction) => ({
+        digest: `mock_sui_${Date.now().toString(36)}`,
+        raw: transaction,
+      }),
+      waitForTransaction: async (result) => ({
+        confirmed: true,
+        checkpoint: "1",
+        raw: result,
+      }),
+    }),
+  ],
   storage: await createJsonFileStorage(path.resolve(".ink", "proof-store.json")),
 });
 

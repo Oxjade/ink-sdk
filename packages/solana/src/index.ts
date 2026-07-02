@@ -64,16 +64,18 @@ export class SolanaAdapter implements ChainAdapter<SolanaChain> {
     if (this.rpc.sendTransaction) {
       return this.rpc.sendTransaction(signedTransaction, params.targetChain);
     }
-    return {
-      signature: createActionId("sol_sig"),
-      raw: signedTransaction,
-    };
+    throw new Error(
+      "Solana sendTransaction RPC hook is required for real Solana execution. The default SolanaAdapter only builds the instruction payload shape.",
+    );
   }
 
   async waitForReceipt(result: InkTransactionResult, params: InkCallParams<SolanaChain>): Promise<InkReceipt> {
-    const receipt = this.rpc.confirmTransaction
-      ? await this.rpc.confirmTransaction(result, params.targetChain)
-      : { confirmed: true };
+    if (!this.rpc.confirmTransaction) {
+      throw new Error(
+        "Solana confirmTransaction RPC hook is required before a Solana action can be marked executed.",
+      );
+    }
+    const receipt = await this.rpc.confirmTransaction(result, params.targetChain);
     return {
       ...this.formatResult(result, params),
       status: "executed",

@@ -9,7 +9,15 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ink-sdk/types": ["packages/types/src/index.ts"],
+      "@ink-sdk/evm": ["packages/evm/src/index.ts"],
+      "@ink-sdk/ika-connector": ["packages/ika-connector/src/index.ts"],
+      "@ink-sdk/solana": ["packages/solana/src/index.ts"],
+      "@ink-sdk/sui": ["packages/sui/src/index.ts"],
+      "@ink-sdk/sdk": ["packages/sdk/src/index.ts"]
+    }
   }
 }
-

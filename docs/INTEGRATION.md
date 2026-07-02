@@ -32,12 +32,19 @@ Ink is designed for applications that need to perform real actions across chains
 | Local dWallet mock/dev connector | Implemented |
 | Existing real Ika dWallet import | Implemented |
 | Real Ika EVM signing | Implemented and tested on Ika/Sui testnet |
+| Real Ika Solana ED25519 dWallet creation | Implemented through `IkaSolanaDWalletConnector` |
+| Real Ika Solana ED25519 message signing | Implemented for `solana-message` payloads |
+| Real Ika Sui ED25519 dWallet creation | Implemented through `IkaSuiDWalletConnector` |
+| Real Ika Sui transaction-byte signing | Implemented for `sui-transaction` bytes with Sui intent |
 | EVM ABI calldata encoding | Implemented with `ethers.Interface` |
 | EVM broadcast | Implemented when RPC broadcaster and target-chain gas are available |
+| Built-in ethers EVM RPC helpers | Implemented |
 | Storage and idempotency | Implemented |
 | Production mode connector guard | Implemented |
+| SDK-side policy controls | Implemented |
 | Lifecycle events | Implemented |
 | Solana adapter shape | Implemented as adapter foundation |
+| Solana fake execution fallback | Removed; real send/confirm hooks are required |
 | Native Solana signing/broadcast | Integration pending |
 | Sui adapter shape | Implemented as adapter foundation; no fake execution fallback |
 | Native Sui Move execution/broadcast | Integration pending |
@@ -55,28 +62,29 @@ npm run build
 Package names used by the SDK:
 
 ```ts
-import { createInkClient } from "@ink/sdk";
-import { EvmAdapter } from "@ink/evm";
-import { IkaEvmSigningConnector } from "@ink/ika-connector";
+import { createEthersEvmAdapter } from "@ink-sdk/evm";
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { createInkClient } from "@ink-sdk/sdk";
 ```
 
 When published, apps should install the packages they need:
 
 ```bash
-npm install @ink/sdk @ink/evm @ink/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
 ```
 
 For the standard production EVM path, install the SDK and Ika connector directly:
 
 ```bash
-npm install @ink/sdk @ink/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
 ```
 
 ## Create a Client
 
 ```ts
-import { createInkClient } from "@ink/sdk";
-import { IkaEvmSigningConnector } from "@ink/ika-connector";
+import { createEthersEvmAdapter } from "@ink-sdk/evm";
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { createInkClient } from "@ink-sdk/sdk";
 
 const ink = createInkClient({
   mode: "production",
@@ -106,6 +114,19 @@ const ink = createInkClient({
       rpcUrl: "https://sui-testnet-rpc.publicnode.com",
       explorerUrl: "https://suiscan.xyz/testnet",
     },
+  ],
+  adapters: [
+    createEthersEvmAdapter({
+      chain: {
+        type: "evm",
+        chainId: 97,
+        rpcUrl: "https://bsc-testnet-rpc.publicnode.com",
+        explorerUrl: "https://testnet.bscscan.com",
+      },
+      rpcUrl: "https://bsc-testnet-rpc.publicnode.com",
+      signerAddress: process.env.IKA_ETH_ADDRESS!,
+      broadcast: false,
+    }),
   ],
 });
 ```
@@ -150,7 +171,7 @@ const dwallet = await ink.dwallet.create({
 });
 ```
 
-This uses the default local connector and creates a deterministic development record. It is intentionally not supported by `IkaEvmSigningConnector`; production apps should create the dWallet with Ika, fund the required Sui/Ika objects, refresh presigns, and import the existing dWallet.
+This uses the default local connector and creates a deterministic development record. It is intentionally not supported by `IkaEvmSigningConnector`; production apps should create/provision the dWallet with Ika, fund the required Sui/Ika objects, refresh presigns, and import the existing dWallet.
 
 ### Import an Existing Ika dWallet
 
@@ -182,6 +203,110 @@ await ink.dwallet.list();
 await ink.dwallet.getAddress(dwallet.id, { type: "evm", chainId: 97 });
 await ink.dwallet.linkChains(dwallet.id, [{ type: "sui", network: "testnet" }]);
 ```
+
+## Create a Real Ika Solana dWallet
+
+Use `IkaSolanaDWalletConnector` when you want Ika to create an ED25519 dWallet and derive a Solana address.
+
+```ts
+import { IkaSolanaDWalletConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
+
+const ink = new InkClient({
+  mode: "production",
+  ika: {
+    network: "testnet",
+    connector: new IkaSolanaDWalletConnector({ env: process.env }),
+  },
+  chains: [{ type: "solana", cluster: "devnet" }],
+});
+
+const dwallet = await ink.dwallet.create({
+  name: "solana-ed25519-wallet",
+  chains: [{ type: "solana", cluster: "devnet" }],
+});
+
+const solanaAddress = await ink.dwallet.getAddress(dwallet.id, {
+  type: "solana",
+  cluster: "devnet",
+});
+```
+
+Minimum env for creation:
+
+```bash
+IKA_NETWORK=testnet
+IKA_SUI_RPC=https://sui-testnet-rpc.publicnode.com
+IKA_SUI_PRIVATE_KEY=suiprivkey...
+IKA_COIN_ID=0x...
+IKA_SUI_COIN_ID=0x...
+```
+
+Recommended env for stable production use:
+
+```bash
+IKA_SOLANA_USER_SHARE_ENCRYPTION_KEYS_B64=...
+IKA_SOLANA_DWALLET_ID=0x...
+IKA_SOLANA_DWALLET_CAP_ID=0x...
+IKA_SOLANA_PRESIGN_ID=0x...
+IKA_SOLANA_UNVERIFIED_PRESIGN_CAP_ID=0x...
+IKA_SOLANA_ENCRYPTED_USER_SECRET_KEY_SHARE_ID=0x...
+IKA_SOLANA_ADDRESS=...
+```
+
+The connector signs `solana-message` payload bytes with Ika ED25519/EdDSA/SHA512. Full Solana transaction execution still requires a Solana adapter that supplies real serialized message bytes plus send/confirm RPC hooks.
+
+## Create a Real Ika Sui dWallet
+
+Use `IkaSuiDWalletConnector` when you want Ika to create an ED25519 dWallet and derive a Sui address.
+
+```ts
+import { IkaSuiDWalletConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
+
+const ink = new InkClient({
+  mode: "production",
+  ika: {
+    network: "testnet",
+    connector: new IkaSuiDWalletConnector({ env: process.env }),
+  },
+  chains: [{ type: "sui", network: "testnet" }],
+});
+
+const dwallet = await ink.dwallet.create({
+  name: "sui-ed25519-wallet",
+  chains: [{ type: "sui", network: "testnet" }],
+});
+
+const suiAddress = await ink.dwallet.getAddress(dwallet.id, {
+  type: "sui",
+  network: "testnet",
+});
+```
+
+Minimum env for creation:
+
+```bash
+IKA_NETWORK=testnet
+IKA_SUI_RPC=https://sui-testnet-rpc.publicnode.com
+IKA_SUI_PRIVATE_KEY=suiprivkey...
+IKA_COIN_ID=0x...
+IKA_SUI_COIN_ID=0x...
+```
+
+Recommended env for stable production use:
+
+```bash
+IKA_SUI_USER_SHARE_ENCRYPTION_KEYS_B64=...
+IKA_SUI_DWALLET_ID=0x...
+IKA_SUI_DWALLET_CAP_ID=0x...
+IKA_SUI_PRESIGN_ID=0x...
+IKA_SUI_UNVERIFIED_PRESIGN_CAP_ID=0x...
+IKA_SUI_ENCRYPTED_USER_SECRET_KEY_SHARE_ID=0x...
+IKA_SUI_ADDRESS=0x...
+```
+
+The connector signs `sui-transaction` bytes using Sui transaction intent and returns `metadata.serializedSignature`. Full Sui execution still requires a Sui adapter hook that submits the transaction bytes with that serialized signature and waits for the digest.
 
 ## Call an EVM Contract Function
 
@@ -234,7 +359,7 @@ receipt.receipt?.confirmed;
 
 ## Call a Solana Program Instruction
 
-The Solana adapter currently builds a native instruction-shaped payload and supports adapter hooks for send, confirm, and compute estimation.
+The Solana adapter currently builds a native instruction-shaped payload and supports adapter hooks for send, confirm, and compute estimation. It no longer marks actions executed without real send/confirm hooks.
 
 ```ts
 await ink.call({
@@ -301,7 +426,7 @@ Production Sui support still needs native programmable transaction construction,
 Ink can persist statuses, receipts, dWallet metadata, and idempotency mappings.
 
 ```ts
-import { InkClient, createJsonFileStorage } from "@ink/sdk";
+import { InkClient, createJsonFileStorage } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
   storage: await createJsonFileStorage(".ink/ink-store.json"),
@@ -323,6 +448,24 @@ const receipt = await ink.call({
 ```
 
 If the same idempotency key is used again, Ink returns the stored receipt.
+
+## Add SDK-Side Policies
+
+Use policies to reject unsafe calls before Ink builds/signs a transaction:
+
+```ts
+const ink = new InkClient({
+  policies: {
+    allowedChains: [{ type: "evm", chainId: 97 }],
+    allowedEvmContracts: ["0xae13d989dac2f0debff460ac112a837c89baa7cd"],
+    allowedFunctions: ["transfer", "deposit"],
+    maxEvmValue: "1000000000000000000",
+    requireIdempotencyKey: true,
+  },
+});
+```
+
+Policy failures throw `InkPolicyError`, emit `action:error`, and mark the preflight action `failed`.
 
 ## Subscribe to Lifecycle Events
 
@@ -361,12 +504,19 @@ const storage = {
 
 ## Real Ika EVM Signing
 
-Use `IkaEvmSigningConnector` for the real Ika EVM signing path.
+Use `IkaEvmSigningConnector` for the real Ika EVM signing path and `createEthersEvmAdapter()` for nonce, gas, broadcast, and receipt handling.
 
 ```ts
-import { InkClient } from "@ink/sdk";
-import { EvmAdapter } from "@ink/evm";
-import { IkaEvmSigningConnector } from "@ink/ika-connector";
+import { createEthersEvmAdapter } from "@ink-sdk/evm";
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { InkClient } from "@ink-sdk/sdk";
+
+const chain = {
+  type: "evm",
+  chainId: 97,
+  rpcUrl: "https://bsc-testnet-rpc.publicnode.com",
+  explorerUrl: "https://testnet.bscscan.com",
+};
 
 const ink = new InkClient({
   projectId: "ika-bnb-signing",
@@ -374,18 +524,13 @@ const ink = new InkClient({
     network: "testnet",
     connector: new IkaEvmSigningConnector({ env: process.env }),
   },
-  chains: [
-    {
-      type: "evm",
-      chainId: 97,
-      rpcUrl: "https://bsc-testnet-rpc.publicnode.com",
-      explorerUrl: "https://testnet.bscscan.com",
-    },
-  ],
+  chains: [chain],
   adapters: [
-    new EvmAdapter({
-      // Supply RPC hooks in production so Ink can fetch nonce/gas,
-      // broadcast raw txs, and wait for receipts.
+    createEthersEvmAdapter({
+      chain,
+      rpcUrl: chain.rpcUrl,
+      signerAddress: process.env.IKA_ETH_ADDRESS!,
+      broadcast: process.env.INK_BROADCAST_IKA_SIGNED_TX === "true",
     }),
   ],
 });
