@@ -35,7 +35,7 @@ This repository is organized as a TypeScript workspace:
 - `@ink-sdk/evm` - EVM adapter for ABI calls, transaction building, ethers RPC helpers, signing payloads, signature attachment, broadcast, and receipts.
 - `@ink-sdk/solana` - Solana adapter foundation for program instruction payloads. Real Solana execution requires native RPC/signing hooks.
 - `@ink-sdk/sui` - Sui adapter foundation for Move-call payloads. Real Sui execution requires native RPC/signing hooks.
-- `@ink-sdk/ika-connector` - lower-level Ika/dWallet connector package re-exported by `@ink-sdk/sdk`.
+- Ika/dWallet connectors - built into `@ink-sdk/sdk` for EVM, Solana, and Sui dWallet creation/signing.
 - `@ink-sdk/react` - React bindings for apps that want hooks around the core SDK.
 
 ## Core Flow

@@ -7,11 +7,9 @@
   },
   "references": [
     { "path": "../types" },
-    { "path": "../ika-connector" },
     { "path": "../evm" },
     { "path": "../solana" },
     { "path": "../sui" }
   ],
   "include": ["src"]
 }
-

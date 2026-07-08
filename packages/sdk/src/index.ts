@@ -60,14 +60,14 @@ export {
   IkaEvmSigningConnector,
   IkaSolanaDWalletConnector,
   IkaSuiDWalletConnector,
-} from "@ink-sdk/ika-connector";
+} from "./ika-connector.js";
 
 export type {
   IkaEvmSigningConnectorOptions,
   IkaSdkLikeClient,
   IkaSolanaDWalletConnectorOptions,
   IkaSuiDWalletConnectorOptions,
-} from "@ink-sdk/ika-connector";
+} from "./ika-connector.js";
 
 export class InkClient {
   readonly dwallet: {

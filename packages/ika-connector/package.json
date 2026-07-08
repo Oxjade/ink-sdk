@@ -2,6 +2,7 @@
   "name": "@ink-sdk/ika-connector",
   "version": "0.2.1",
   "description": "Ika/dWallet connector for Ink.",
+  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

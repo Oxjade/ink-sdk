@@ -1,6 +1,8 @@
 # @ink-sdk/ika-connector
 
-Ika connector package for Ink.
+Private legacy workspace for the Ika/dWallet connector implementation.
+
+Use `@ink-sdk/sdk` directly. The Ika connector classes are built into and exported from `@ink-sdk/sdk`, so this package is not published as part of the public release.
 
 ## Connectors
 
