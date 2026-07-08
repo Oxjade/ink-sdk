@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ethers } from "ethers";
 import { createEthersEvmAdapter } from "@ink-sdk/evm";
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const envPath = path.resolve("..", ".env");

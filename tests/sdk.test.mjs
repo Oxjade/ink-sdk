@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ethers } from "ethers";
 import { createEthersEvmAdapter, createEthersEvmRpc } from "../packages/evm/dist/index.js";
-import { IkaEvmSigningConnector, IkaSolanaDWalletConnector, IkaSuiDWalletConnector } from "../packages/ika-connector/dist/index.js";
-import { InkClient, createInkClient } from "../packages/sdk/dist/index.js";
+import {
+  IkaEvmSigningConnector,
+  IkaSolanaDWalletConnector,
+  IkaSuiDWalletConnector,
+  InkClient,
+  createInkClient,
+} from "../packages/sdk/dist/index.js";
 
 const evmChain = {
   type: "evm",

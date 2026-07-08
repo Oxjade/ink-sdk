@@ -4,7 +4,7 @@ Ink is a developer-first programmable cross-chain function execution SDK powered
 
 Ink lets developers call blockchain functions through one SDK while Ika/dWallet provides programmable signing. A developer defines the target chain, contract/program/module, function, args, and signing method; Ink builds the native transaction for that chain, routes it through Ika/dWallet signing, attaches the returned signature, executes or returns the signed transaction, and gives back a clean receipt.
 
-Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it builds ABI function calls, estimates gas, creates the EVM transaction, gets an Ika-backed secp256k1 signature, serializes the signed transaction, and can broadcast it. The current real Ika connector is EVM-only. The Sui adapter is a Move-call payload foundation; production Sui execution requires a native Sui adapter/RPC hooks or a future Ika Sui connector.
+Ink supports EVM chains, Solana, and Sui through chain adapters. For EVM, it builds ABI function calls, estimates gas, creates the EVM transaction, gets an Ika-backed secp256k1 signature, serializes the signed transaction, and can broadcast it. The SDK also re-exports the Ika connector classes for EVM, Solana, and Sui dWallet creation/signing.
 
 The goal is programmable cross-chain execution for DeFi apps, automation, AI agents, vaults, protocols, and developer tools that need to perform real actions across multiple chains without rebuilding signing and transaction logic for every network.
 
@@ -16,7 +16,7 @@ The goal is programmable cross-chain execution for DeFi apps, automation, AI age
 ## Install From npm
 
 ```bash
-npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm
 ```
 
 ## Product Line
@@ -35,7 +35,7 @@ This repository is organized as a TypeScript workspace:
 - `@ink-sdk/evm` - EVM adapter for ABI calls, transaction building, ethers RPC helpers, signing payloads, signature attachment, broadcast, and receipts.
 - `@ink-sdk/solana` - Solana adapter foundation for program instruction payloads. Real Solana execution requires native RPC/signing hooks.
 - `@ink-sdk/sui` - Sui adapter foundation for Move-call payloads. Real Sui execution requires native RPC/signing hooks.
-- `@ink-sdk/ika-connector` - Ika/dWallet connectors for EVM secp256k1 signing plus Solana/Sui ED25519 dWallet creation/signing.
+- `@ink-sdk/ika-connector` - lower-level Ika/dWallet connector package re-exported by `@ink-sdk/sdk`.
 - `@ink-sdk/react` - React bindings for apps that want hooks around the core SDK.
 
 ## Core Flow
@@ -101,7 +101,7 @@ const dwallet = await ink.dwallet.create({
 
 ```ts
 import { createEthersEvmAdapter } from "@ink-sdk/evm";
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { createInkClient } from "@ink-sdk/sdk";
 
 const ink = createInkClient({
@@ -193,7 +193,7 @@ InkClient requires a real Ika connector. If `ika.connector` is omitted, the SDK 
 ## Real Solana dWallets
 
 ```ts
-import { IkaSolanaDWalletConnector } from "@ink-sdk/ika-connector";
+import { IkaSolanaDWalletConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
@@ -231,7 +231,7 @@ For stable production access, also provide `IKA_SOLANA_USER_SHARE_ENCRYPTION_KEY
 ## Real Sui dWallets
 
 ```ts
-import { IkaSuiDWalletConnector } from "@ink-sdk/ika-connector";
+import { IkaSuiDWalletConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const ink = new InkClient({

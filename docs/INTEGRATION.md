@@ -47,7 +47,7 @@ Ink is designed for applications that need to perform real actions across chains
 | Native Solana signing/broadcast | Integration pending |
 | Sui adapter shape | Implemented as adapter foundation; no fake execution fallback |
 | Native Sui Move execution/broadcast | Integration pending |
-| Real Ika dWallet provisioning from `ink.dwallet.create()` | Integration pending |
+| Real Ika dWallet provisioning from `ink.dwallet.create()` | Implemented for EVM SECP256K1 plus Solana/Sui ED25519 connectors |
 
 ## Install
 
@@ -62,27 +62,27 @@ Package names used by the SDK:
 
 ```ts
 import { createEthersEvmAdapter } from "@ink-sdk/evm";
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { createInkClient } from "@ink-sdk/sdk";
 ```
 
 When published, apps should install the packages they need:
 
 ```bash
-npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm
 ```
 
-For the standard production EVM path, install the SDK and Ika connector directly:
+For the standard production EVM path, install the SDK and EVM adapter:
 
 ```bash
-npm install @ink-sdk/sdk @ink-sdk/evm @ink-sdk/ika-connector
+npm install @ink-sdk/sdk @ink-sdk/evm
 ```
 
 ## Create a Client
 
 ```ts
 import { createEthersEvmAdapter } from "@ink-sdk/evm";
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { createInkClient } from "@ink-sdk/sdk";
 
 const ink = createInkClient({
@@ -153,7 +153,7 @@ Ink exposes dWallet operations through `ink.dwallet`.
 ### Create a Real Ika dWallet
 
 ```ts
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
   mode: "production",
@@ -209,7 +209,7 @@ await ink.dwallet.linkChains(dwallet.id, [{ type: "sui", network: "testnet" }]);
 Use `IkaSolanaDWalletConnector` when you want Ika to create an ED25519 dWallet and derive a Solana address.
 
 ```ts
-import { IkaSolanaDWalletConnector } from "@ink-sdk/ika-connector";
+import { IkaSolanaDWalletConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
@@ -261,7 +261,7 @@ The connector signs `solana-message` payload bytes with Ika ED25519/EdDSA/SHA512
 Use `IkaSuiDWalletConnector` when you want Ika to create an ED25519 dWallet and derive a Sui address.
 
 ```ts
-import { IkaSuiDWalletConnector } from "@ink-sdk/ika-connector";
+import { IkaSuiDWalletConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const ink = new InkClient({
@@ -508,7 +508,7 @@ Use `IkaEvmSigningConnector` for the real Ika EVM signing path and `createEthers
 
 ```ts
 import { createEthersEvmAdapter } from "@ink-sdk/evm";
-import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+import { IkaEvmSigningConnector } from "@ink-sdk/sdk";
 import { InkClient } from "@ink-sdk/sdk";
 
 const chain = {

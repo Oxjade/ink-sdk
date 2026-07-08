@@ -55,6 +55,20 @@ export type {
   SuiTarget,
 } from "@ink-sdk/types";
 
+export {
+  IkaConnectorAdapter,
+  IkaEvmSigningConnector,
+  IkaSolanaDWalletConnector,
+  IkaSuiDWalletConnector,
+} from "@ink-sdk/ika-connector";
+
+export type {
+  IkaEvmSigningConnectorOptions,
+  IkaSdkLikeClient,
+  IkaSolanaDWalletConnectorOptions,
+  IkaSuiDWalletConnectorOptions,
+} from "@ink-sdk/ika-connector";
+
 export class InkClient {
   readonly dwallet: {
     create: (request: DWalletCreateRequest) => Promise<DWalletRecord>;
