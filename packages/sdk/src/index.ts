@@ -1,5 +1,4 @@
 import { EvmAdapter } from "@ink-sdk/evm";
-import { InMemoryIkaConnector } from "@ink-sdk/ika-connector";
 import { SolanaAdapter } from "@ink-sdk/solana";
 import { SuiAdapter } from "@ink-sdk/sui";
 import type {
@@ -77,8 +76,10 @@ export class InkClient {
   private readonly listeners = new Map<InkClientEventName, Set<InkClientEventListener<any>>>();
 
   constructor(options: InkClientOptions = {}) {
-    if (options.mode === "production" && !options.ika?.connector) {
-      throw new Error("InkClient production mode requires a real Ika connector");
+    if (!options.ika?.connector) {
+      throw new Error(
+        "InkClient requires an explicit Ika connector. Use IkaEvmSigningConnector, IkaSolanaDWalletConnector, or IkaSuiDWalletConnector for real dWallet creation/signing.",
+      );
     }
 
     this.chains = options.chains ?? [];
@@ -87,7 +88,7 @@ export class InkClient {
       new SolanaAdapter(),
       new SuiAdapter(),
     ];
-    this.ika = options.ika?.connector ?? new InMemoryIkaConnector();
+    this.ika = options.ika.connector;
     this.policies = options.policies;
     this.storage = options.storage;
 

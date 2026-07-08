@@ -1,11 +1,10 @@
 # Real Testnet Execution Checklist
 
-The mock proof shows SDK control flow. The live testnet proof shows real RPC data. A true executed testnet receipt needs the final signing and funding pieces.
+The live testnet proof shows real RPC data. A true executed testnet receipt needs the final signing and funding pieces.
 
 ## Current Commands
 
 ```bash
-npm run proof:mock
 npm run proof:testnet
 npm run proof:ika-sui
 npm run proof:bnb-public
@@ -39,11 +38,11 @@ INK_AUTO_REFRESH_IKA_PRESIGN=true npm run proof:ika-sign-bnb
 - Calls real public functions on the BNB Smart Chain testnet WBNB contract.
 - Creates a real Ika EVM signing request and attaches the returned signature to a BNB testnet transaction.
 - Uses real EVM ABI calldata encoding through `ethers.Interface`.
-- Can persist local mock proof state with `createJsonFileStorage`.
+- Can persist proof state with `createJsonFileStorage`.
 
 ## What Is Still Required For Executed Receipts
 
-To return real executed receipts instead of mock receipts, Ink needs:
+To return real executed receipts, Ink needs:
 
 1. A real Ika testnet connector.
 2. A created/provisioned testnet dWallet.

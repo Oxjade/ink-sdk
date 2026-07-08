@@ -29,7 +29,6 @@ Ink is designed for applications that need to perform real actions across chains
 | --- | --- |
 | Core `ink.call()` flow | Implemented |
 | dWallet facade | Implemented |
-| Local dWallet mock/dev connector | Implemented |
 | Existing real Ika dWallet import | Implemented |
 | Real Ika EVM signing | Implemented and tested on Ika/Sui testnet |
 | Real Ika Solana ED25519 dWallet creation | Implemented through `IkaSolanaDWalletConnector` |
@@ -133,7 +132,7 @@ const ink = createInkClient({
 
 If `chains` is set, Ink rejects calls to chains that are not configured. If `chains` is omitted, Ink allows any chain supported by the configured adapters.
 
-Production mode requires a real `ika.connector`. Without one, client creation fails immediately so a mock signer cannot accidentally ship to users. `IkaEvmSigningConnector` is also production-only: it validates the real Ika/Sui signing env vars during construction, never provisions deterministic mock dWallets, and only signs EVM payloads through the Ika signing transaction flow.
+InkClient requires a real `ika.connector`. Without one, client creation fails immediately. `IkaEvmSigningConnector` validates the base Ika/Sui env vars during construction, can create SECP256K1 dWallets, and signs EVM payloads through the Ika signing transaction flow.
 
 Required production Ika env vars:
 
@@ -141,29 +140,30 @@ Required production Ika env vars:
 IKA_NETWORK=testnet
 IKA_SUI_RPC=https://fullnode.testnet.sui.io:443
 IKA_SUI_PRIVATE_KEY=suiprivkey...
-IKA_DWALLET_ID=0x...
-IKA_DWALLET_CAP_ID=0x...
-IKA_PRESIGN_ID=0x...
-IKA_UNVERIFIED_PRESIGN_CAP_ID=0x...
 IKA_COIN_ID=0x...
 IKA_SUI_COIN_ID=0x...
-IKA_ETH_ADDRESS=0x...
 ```
+
+For signing with an already-created EVM dWallet, also provide `IKA_DWALLET_ID`, `IKA_DWALLET_CAP_ID`, `IKA_PRESIGN_ID`, `IKA_UNVERIFIED_PRESIGN_CAP_ID`, and `IKA_ETH_ADDRESS`, or import/store those values from the wallet record returned by `ink.dwallet.create()`.
 
 ## dWallet Setup
 
 Ink exposes dWallet operations through `ink.dwallet`.
 
-### Development-only dWallet Records
+### Create a Real Ika dWallet
 
 ```ts
+import { IkaEvmSigningConnector } from "@ink-sdk/ika-connector";
+
+const ink = new InkClient({
+  mode: "production",
+  ika: { connector: new IkaEvmSigningConnector({ env: process.env }) },
+  chains: [{ type: "evm", chainId: 97 }],
+});
+
 const dwallet = await ink.dwallet.create({
   name: "project-executor",
-  chains: [
-    { type: "evm", chainId: 97 },
-    { type: "solana", cluster: "devnet" },
-    { type: "sui", network: "testnet" },
-  ],
+  chains: [{ type: "evm", chainId: 97 }],
   config: {
     purpose: "cross_chain_execution",
     appId: "my_app",
@@ -171,7 +171,7 @@ const dwallet = await ink.dwallet.create({
 });
 ```
 
-This uses the default local connector and creates a deterministic development record. It is intentionally not supported by `IkaEvmSigningConnector`; production apps should create/provision the dWallet with Ika, fund the required Sui/Ika objects, refresh presigns, and import the existing dWallet.
+This submits the Ika DKG transaction through Sui, waits for the dWallet to become active, derives the EVM address, creates a presign, and returns the real Ika object IDs needed for later signing. Use `IkaSolanaDWalletConnector` or `IkaSuiDWalletConnector` the same way for ED25519 Solana/Sui wallets.
 
 ### Import an Existing Ika dWallet
 
@@ -579,12 +579,6 @@ INK_BROADCAST_IKA_SIGNED_TX=true npm run proof:ika-sign-bnb
 
 ## Run Included Proofs
 
-Mock end-to-end SDK proof:
-
-```bash
-npm run proof:mock
-```
-
 Live public BNB testnet reads:
 
 ```bash
@@ -629,8 +623,8 @@ Ink tracks:
 
 ## Recommended Integration Path
 
-1. Start with `npm run proof:mock` to understand the SDK flow.
-2. Use `ink.dwallet.importExisting()` with a known Ika dWallet.
+1. Create a real Ika dWallet with `ink.dwallet.create()` and the connector for the target chain.
+2. Use `ink.dwallet.importExisting()` only when the wallet was provisioned outside the SDK.
 3. Add `createJsonFileStorage()` or a database-backed `InkStorage`.
 4. Call an EVM testnet contract with `ink.call()`.
 5. Use `IkaEvmSigningConnector` for real Ika signing.

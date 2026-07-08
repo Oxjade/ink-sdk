@@ -1,6 +1,6 @@
 {
   "name": "@ink-sdk/solana",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Solana adapter for Ink cross-chain function execution.",
   "type": "module",
   "main": "dist/index.js",
@@ -22,6 +22,6 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@ink-sdk/types": "0.2.0"
+    "@ink-sdk/types": "0.2.1"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "ink-sdk-workspace",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Ink programmable cross-chain function execution SDK workspace.",
   "type": "module",
@@ -11,8 +11,7 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "proof": "npm run proof:mock",
-    "proof:mock": "npm run build && node examples/proof-execution.mjs",
+    "proof": "npm run proof:testnet",
     "proof:testnet": "npm run build && node examples/testnet-live-data.mjs",
     "proof:ika-sui": "node examples/ika-sui-cli-discovery.mjs",
     "proof:bnb-public": "node examples/bnb-public-function.mjs",

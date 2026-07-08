@@ -76,13 +76,9 @@ Internal execution:
 9. Ink tracks confirmation.
 10. Ink returns a clean receipt.
 
-## dWallet Modes
+## dWallet Creation
 
-Ink supports two dWallet modes:
-
-- Existing dWallet mode: pass an already-created `dWalletId`.
-- Development dWallet mode: create a local mock/dev dWallet record through Ink.
-- Production dWallet mode: create/provision the real dWallet with Ika, then import it with `ink.dwallet.importExisting()`.
+Ink expects real Ika dWallets. Create a new dWallet through an Ika connector that supports creation, or import an already-provisioned Ika dWallet with `ink.dwallet.importExisting()`.
 
 ```ts
 const dwallet = await ink.dwallet.create({
@@ -141,14 +137,13 @@ ink.on("action:status", ({ actionId, status }) => {
   console.info("[ink]", actionId, status);
 });
 
-const dwallet = await ink.dwallet.importExisting({
-  dWalletId: process.env.IKA_DWALLET_ID!,
+const dwallet = await ink.dwallet.create({
+  name: "project-executor",
   chains: [
     { type: "evm", chainId: 56 },
   ],
-  metadata: {
-    source: "ika",
-    signerAddress: process.env.IKA_ETH_ADDRESS,
+  config: {
+    purpose: "cross_chain_execution",
   },
 });
 
@@ -188,12 +183,12 @@ Import real Ika dWallet. Define function. Sign with Ika. Execute or return the s
 - `createJsonFileStorage(path)` provides a Node-friendly JSON storage implementation for local tools and examples.
 - `@ink-sdk/evm` now uses real ABI calldata encoding through `ethers.Interface`.
 - `createEthersEvmAdapter()` and `createEthersEvmRpc()` provide built-in ethers nonce, gas, broadcast, and receipt hooks.
-- `IkaEvmSigningConnector` performs the real Ika EVM signing path for BNB/EVM testnet flows.
+- `IkaEvmSigningConnector` can create/import real Ika SECP256K1 dWallets, derive EVM addresses, and sign EVM transactions.
 - `IkaSolanaDWalletConnector` can create/import real Ika ED25519 dWallets, derive Solana addresses, and sign `solana-message` payloads.
 - `IkaSuiDWalletConnector` can create/import real Ika ED25519 dWallets, derive Sui addresses, and sign Sui transaction bytes with Sui transaction intent.
 - Optional `policies` let apps allowlist chains, targets, functions, EVM value, and require idempotency before signing.
 
-Production mode requires a real Ika connector. If `mode: "production"` is used without `ika.connector`, the SDK throws during client creation instead of silently using the development connector. `IkaEvmSigningConnector` is the production Ika/Sui EVM signing connector. `IkaSolanaDWalletConnector` and `IkaSuiDWalletConnector` are production ED25519 connectors. Full Solana/Sui execution still requires adapters that provide real serialized transaction/message bytes plus submit/confirm hooks.
+InkClient requires a real Ika connector. If `ika.connector` is omitted, the SDK throws during client creation. `IkaEvmSigningConnector` creates and signs with SECP256K1 dWallets for EVM flows. `IkaSolanaDWalletConnector` and `IkaSuiDWalletConnector` create and sign with ED25519 dWallets for Solana and Sui flows. Full Solana/Sui execution still requires adapters that provide real serialized transaction/message bytes plus submit/confirm hooks.
 
 ## Real Solana dWallets
 
@@ -303,23 +298,18 @@ Use `IKA_GAS_COIN_ID`, `IKA_SIGN_GAS_COIN_ID`, `IKA_REFRESH_PRESIGN_GAS_BUDGET`,
 
 For complete setup and integration instructions, see [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
-Run the local mock proof milestone:
+Run the real testnet proof:
 
 ```bash
 npm run proof
 ```
 
-The proof script demonstrates the current end-to-end SDK path for all supported chain types:
+The proof scripts demonstrate the current SDK path with live RPC data:
 
 1. Create a dWallet through Ink.
 2. Call an EVM contract function.
-3. Call a Solana program instruction.
-4. Build a Sui Move-call-shaped action.
-5. Mock sign each native transaction payload through the in-memory Ika connector.
-6. Return and assert executed receipts only for paths backed by real RPC confirmation.
-7. Persist dWallets, statuses, receipts, and idempotency mappings in `.ink/proof-store.json`.
-
-The example lives at `examples/proof-execution.mjs`.
+3. Resolve live chain metadata and Ika object state.
+4. Return and assert receipts only for paths backed by real RPC confirmation.
 
 Run the live testnet data proof:
 

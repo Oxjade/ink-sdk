@@ -36,9 +36,69 @@ const transferAbi = [
   },
 ];
 
+class TestIkaConnector {
+  constructor() {
+    this.wallets = new Map();
+    this.sequence = 1;
+  }
+
+  async createDWallet(request) {
+    const id = `test_dwallet_${String(this.sequence++).padStart(3, "0")}`;
+    const wallet = {
+      id,
+      name: request.name,
+      addresses: Object.fromEntries(request.chains.map((chain) => [chain.type, `${chain.type}:${id}`])),
+      supportedChains: request.chains,
+      metadata: { testOnly: true },
+    };
+    this.wallets.set(id, wallet);
+    return wallet;
+  }
+
+  async getDWallet(dWalletId) {
+    const wallet = this.wallets.get(dWalletId);
+    if (!wallet) throw new Error(`test dWallet not found: ${dWalletId}`);
+    return wallet;
+  }
+
+  async listDWallets() {
+    return Array.from(this.wallets.values());
+  }
+
+  async getAddress(dWalletId, chain) {
+    return (await this.getDWallet(dWalletId)).addresses[chain.type];
+  }
+
+  async linkChains(dWalletId, chains) {
+    const wallet = await this.getDWallet(dWalletId);
+    wallet.supportedChains = [...wallet.supportedChains, ...chains];
+    return wallet;
+  }
+
+  async importExisting(request) {
+    const wallet = {
+      id: request.dWalletId,
+      addresses: {},
+      supportedChains: request.chains ?? [],
+      metadata: request.metadata,
+    };
+    this.wallets.set(wallet.id, wallet);
+    return wallet;
+  }
+
+  async sign(input) {
+    await this.getDWallet(input.dWalletId);
+    return {
+      signature: `test_signature_${input.targetChain.type}_${input.dWalletId}`,
+      metadata: { payloadKind: input.payload.kind, testOnly: true },
+    };
+  }
+}
+
 async function createClientAndWallet() {
   const ink = createInkClient({
     chains: [evmChain],
+    ika: { connector: new TestIkaConnector() },
   });
   const wallet = await ink.dwallet.create({
     name: "test-wallet",
@@ -69,17 +129,17 @@ function createEvmCall(dWalletId, idempotencyKey = "transfer-001") {
   };
 }
 
-test("production mode refuses to use the development connector implicitly", () => {
+test("InkClient refuses implicit dWallet connectors", () => {
   assert.throws(
-    () => new InkClient({ mode: "production" }),
-    /production mode requires a real Ika connector/,
+    () => new InkClient({ chains: [evmChain] }),
+    /requires an explicit Ika connector/,
   );
 });
 
-test("real Ika EVM connector refuses mock configuration and non-EVM mock signing", async () => {
+test("real Ika EVM connector requires real configuration and rejects non-EVM signing", async () => {
   assert.throws(
     () => new IkaEvmSigningConnector({ env: {} }),
-    /Missing required Ika signing env vars/,
+    /Missing required Ika EVM dWallet env vars/,
   );
 
   const connector = new IkaEvmSigningConnector({
@@ -102,6 +162,13 @@ test("real Ika EVM connector refuses mock configuration and non-EVM mock signing
       payload: { kind: "solana-message", bytes: new Uint8Array() },
     }),
     /only supports real EVM signing/,
+  );
+});
+
+test("Ika EVM connector requires base Ika env before creating real dWallets", async () => {
+  assert.throws(
+    () => new IkaEvmSigningConnector({ env: {} }),
+    /Missing required Ika EVM dWallet env vars/,
   );
 });
 
@@ -315,10 +382,9 @@ test("ethers EVM helper broadcasts and waits when enabled", async () => {
 });
 
 test("policy controls allow valid EVM calls and reject unsafe calls before signing", async () => {
-  const { ink, wallet } = await createClientAndWallet();
-  ink.configureChains([evmChain]);
   const allowed = new InkClient({
     chains: [evmChain],
+    ika: { connector: new TestIkaConnector() },
     policies: {
       allowedChains: [evmChain],
       allowedEvmContracts: ["0xae13d989dac2f0debff460ac112a837c89baa7cd"],
@@ -367,6 +433,7 @@ test("invalid EVM targets fail before signing", async () => {
 test("default Sui adapter refuses fake execution without real RPC hooks", async () => {
   const ink = createInkClient({
     chains: [suiChain],
+    ika: { connector: new TestIkaConnector() },
   });
   const wallet = await ink.dwallet.create({
     name: "sui-wallet",
@@ -397,6 +464,7 @@ test("default Sui adapter refuses fake execution without real RPC hooks", async 
 test("default Solana adapter refuses fake execution without real RPC hooks", async () => {
   const ink = createInkClient({
     chains: [solanaChain],
+    ika: { connector: new TestIkaConnector() },
   });
   const wallet = await ink.dwallet.create({
     name: "solana-wallet",

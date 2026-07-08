@@ -87,87 +87,6 @@ export class IkaConnectorAdapter implements IkaConnector {
   }
 }
 
-export class InMemoryIkaConnector implements IkaConnector {
-  private readonly wallets = new Map<string, DWalletRecord>();
-  private sequence = 1;
-
-  async createDWallet(request: DWalletCreateRequest): Promise<DWalletRecord> {
-    const id = `dwallet_${String(this.sequence++).padStart(3, "0")}`;
-    const wallet: DWalletRecord = {
-      id,
-      name: request.name,
-      addresses: buildDeterministicAddresses(id, request.chains),
-      supportedChains: request.chains,
-      metadata: request.config,
-    };
-    this.wallets.set(id, wallet);
-    return wallet;
-  }
-
-  async getDWallet(dWalletId: string): Promise<DWalletRecord> {
-    const wallet = this.wallets.get(dWalletId);
-    if (!wallet) {
-      throw new Error(`dWallet not found: ${dWalletId}`);
-    }
-    return wallet;
-  }
-
-  async listDWallets(): Promise<DWalletRecord[]> {
-    return Array.from(this.wallets.values());
-  }
-
-  async getAddress(dWalletId: string, chain: InkChain): Promise<string> {
-    const wallet = await this.getDWallet(dWalletId);
-    const address = wallet.addresses[chain.type];
-    if (!address) {
-      throw new Error(`No ${chain.type} address linked for dWallet ${dWalletId}`);
-    }
-    return address;
-  }
-
-  async linkChains(dWalletId: string, chains: InkChain[]): Promise<DWalletRecord> {
-    const wallet = await this.getDWallet(dWalletId);
-    const nextChains = mergeChains(wallet.supportedChains, chains);
-    const nextWallet: DWalletRecord = {
-      ...wallet,
-      addresses: {
-        ...wallet.addresses,
-        ...buildDeterministicAddresses(dWalletId, chains),
-      },
-      supportedChains: nextChains,
-    };
-    this.wallets.set(dWalletId, nextWallet);
-    return nextWallet;
-  }
-
-  async importExisting(request: DWalletImportRequest): Promise<DWalletRecord> {
-    const chains = request.chains ?? [];
-    const wallet: DWalletRecord = {
-      id: request.dWalletId,
-      addresses: buildDeterministicAddresses(request.dWalletId, chains),
-      supportedChains: chains,
-      metadata: request.metadata,
-    };
-    this.wallets.set(request.dWalletId, wallet);
-    return wallet;
-  }
-
-  async sign(input: {
-    dWalletId: string;
-    targetChain: InkChain;
-    payload: SigningPayload;
-  }): Promise<ChainSignature> {
-    await this.getDWallet(input.dWalletId);
-    return {
-      signature: `ink_mock_signature_${input.targetChain.type}_${input.dWalletId}`,
-      metadata: {
-        payloadKind: input.payload.kind,
-        developmentOnly: true,
-      },
-    };
-  }
-}
-
 export type IkaEvmSigningConnectorOptions = {
   env?: Record<string, string | undefined>;
   providerForChain?: (chain: InkChain) => ethers.Provider;
@@ -479,13 +398,17 @@ export class IkaEvmSigningConnector implements IkaConnector {
     this.env = options.env ?? process.env;
     this.providerForChain = options.providerForChain;
     this.onTiming = options.onTiming;
-    validateIkaEvmSigningEnv(this.env);
+    validateIkaEvmBaseEnv(this.env);
   }
 
-  async createDWallet(_request: DWalletCreateRequest): Promise<DWalletRecord> {
-    throw new Error(
-      "IkaEvmSigningConnector cannot create production dWallets through Ink yet. Create/provision the real dWallet with Ika, set the IKA_* env vars, then call ink.dwallet.importExisting({ dWalletId, chains, metadata })."
-    );
+  async createDWallet(request: DWalletCreateRequest): Promise<DWalletRecord> {
+    if (!request.chains.some((chain) => chain.type === "evm")) {
+      throw new Error("IkaEvmSigningConnector can only create dWallet records for EVM chains");
+    }
+    const signer = await this.getSigner();
+    const wallet = await signer.createDWallet(request);
+    this.importedWallets.set(wallet.id, wallet);
+    return wallet;
   }
 
   async getDWallet(dWalletId: string): Promise<DWalletRecord> {
@@ -501,8 +424,12 @@ export class IkaEvmSigningConnector implements IkaConnector {
   }
 
   async listDWallets(): Promise<DWalletRecord[]> {
-    const configured = await this.getDWallet(this.expectedDWalletId);
-    const byId = new Map<string, DWalletRecord>([[configured.id, configured]]);
+    const byId = new Map<string, DWalletRecord>();
+    const configuredId = cleanEnvValue(this.env.IKA_DWALLET_ID);
+    if (configuredId) {
+      const configured = await this.getDWallet(configuredId);
+      byId.set(configured.id, configured);
+    }
     for (const wallet of this.importedWallets.values()) byId.set(wallet.id, wallet);
     return Array.from(byId.values());
   }
@@ -518,7 +445,7 @@ export class IkaEvmSigningConnector implements IkaConnector {
 
   async linkChains(_dWalletId: string, _chains: InkChain[]): Promise<DWalletRecord> {
     throw new Error(
-      "IkaEvmSigningConnector cannot link mock chains. Update the real Ika dWallet configuration, then import it again."
+      "IkaEvmSigningConnector cannot link additional chains onto an existing EVM dWallet record. Create or import the real Ika dWallet with the intended EVM chains."
     );
   }
 
@@ -550,8 +477,9 @@ export class IkaEvmSigningConnector implements IkaConnector {
     if (input.targetChain.type !== "evm") {
       throw new Error("IkaEvmSigningConnector only supports real EVM signing. Configure a production connector for this chain type.");
     }
-    if (input.dWalletId !== this.expectedDWalletId) {
-      throw new Error(`IkaEvmSigningConnector is configured for dWallet ${this.expectedDWalletId}, not ${input.dWalletId}`);
+    const configuredId = cleanEnvValue(this.env.IKA_DWALLET_ID);
+    if (configuredId && input.dWalletId !== configuredId && !this.importedWallets.has(input.dWalletId)) {
+      throw new Error(`IkaEvmSigningConnector is configured for dWallet ${configuredId}, not ${input.dWalletId}`);
     }
 
     const signer = await this.getSigner();
@@ -563,6 +491,7 @@ export class IkaEvmSigningConnector implements IkaConnector {
     const timings: Record<string, number> = {};
 
     const serializedTransaction = await signer.signTransaction(unsignedTx, {
+      dWalletId: input.dWalletId,
       provider,
       from,
       onTiming: (nextTimings) => {
@@ -612,19 +541,26 @@ type RealIkaEthereumSignerOptions = {
   Curve: any;
   Hash: any;
   SignatureAlgorithm: any;
-  dWalletId: string;
-  dWalletCapId: string;
-  presignId: string;
-  unverifiedPresignCapId: string;
+  dWalletId?: string;
+  dWalletCapId?: string;
+  presignId?: string;
+  unverifiedPresignCapId?: string;
   ikaCoinId: string;
   suiCoinId: string;
-  ethereumAddress: string;
+  ethereumAddress?: string;
   importedKey?: boolean;
   encryptedUserSecretKeyShareId?: string;
   secretShare?: Uint8Array;
   publicOutput?: Uint8Array;
-  userShareEncryptionKeys?: any;
-  executeSuiTransaction: (transaction: any) => Promise<any>;
+  userShareEncryptionKeys: any;
+  userShareEncryptionKeysGenerated: boolean;
+  executeSuiTransaction: (transaction: any, gasCoinId?: string) => Promise<any>;
+  suiAddress: string;
+  dkgGasCoinId?: string;
+  presignGasCoinId?: string;
+  signGasCoinId?: string;
+  dkgGasBudget?: number;
+  presignGasBudget?: number;
   signGasBudget?: number;
   getSignGasPayment?: () => Promise<{ objectId: string; version: string | number; digest: string }>;
   signTimeoutMs?: number;
@@ -1039,19 +975,199 @@ class RealIkaSolanaSigner {
 }
 
 class RealIkaEthereumSigner {
+  private readonly runtimeWallets = new Map<string, {
+    wallet: DWalletRecord;
+    dWalletCapId?: string;
+    presignId?: string;
+    unverifiedPresignCapId?: string;
+    encryptedUserSecretKeyShareId?: string;
+    dkgUserPublicOutput?: Uint8Array;
+    ethereumAddress?: string;
+  }>();
+
   constructor(private readonly options: RealIkaEthereumSignerOptions) {}
 
+  async createDWallet(request: DWalletCreateRequest): Promise<DWalletRecord> {
+    const startedAt = nowMs();
+    const {
+      ikaClient,
+      Transaction,
+      IkaTransaction,
+      Curve,
+      SignatureAlgorithm,
+      ikaCoinId,
+      suiCoinId,
+      userShareEncryptionKeys,
+      executeSuiTransaction,
+      dkgGasCoinId,
+      presignGasCoinId,
+      dkgGasBudget,
+      presignGasBudget,
+      signTimeoutMs = 180000,
+      signPollIntervalMs = 3000,
+    } = this.options;
+
+    await ensureIkaEncryptionKey({
+      ikaClient,
+      Transaction,
+      IkaTransaction,
+      Curve,
+      curve: Curve.SECP256K1,
+      userShareEncryptionKeys,
+      executeSuiTransaction,
+      gasCoinId: dkgGasCoinId,
+      gasBudget: dkgGasBudget,
+    });
+
+    const activeNetworkEncryptionKey = await ikaClient.getLatestNetworkEncryptionKey(Curve.SECP256K1);
+    const sessionBytes = (await import("@ika.xyz/sdk")).createRandomSessionIdentifier();
+    const dkgInput = await (await import("@ika.xyz/sdk")).prepareDKGAsync(
+      ikaClient,
+      Curve.SECP256K1,
+      userShareEncryptionKeys,
+      sessionBytes,
+      this.options.suiAddress,
+    );
+
+    const dkgTx = new Transaction();
+    const dkgIkaTx = new IkaTransaction({
+      ikaClient,
+      transaction: dkgTx,
+      userShareEncryptionKeys,
+    });
+    const sessionIdentifier = dkgIkaTx.registerSessionIdentifier(sessionBytes);
+    const newDWalletCap = await dkgIkaTx.requestDWalletDKG({
+      dkgRequestInput: dkgInput,
+      sessionIdentifier,
+      dwalletNetworkEncryptionKeyId: objectId(activeNetworkEncryptionKey),
+      curve: Curve.SECP256K1,
+      ikaCoin: dkgTx.object(ikaCoinId),
+      suiCoin: dkgTx.object(suiCoinId),
+    });
+    const dWalletCapResult = normalizeTransactionResult(newDWalletCap);
+    dkgTx.transferObjects([dWalletCapResult], this.options.suiAddress);
+    if (dkgGasBudget !== undefined) dkgTx.setGasBudget(dkgGasBudget);
+    const dkgResult = await executeSuiTransaction(dkgTx, dkgGasCoinId);
+
+    const dWalletId = findCreatedId(dkgResult, /::DWallet$/);
+    const dWalletCapId = findCreatedId(dkgResult, /::DWalletCap$/);
+    const encryptedShareId = findCreatedId(dkgResult, /::EncryptedUserSecretKeyShare$/);
+    if (!dWalletId || !dWalletCapId) {
+      throw new Error("Unable to identify EVM SECP256K1 dWallet objects from Ika DKG result");
+    }
+
+    let activeWallet = await ikaClient.getDWallet(dWalletId);
+    if (!activeWallet.state?.Active) {
+      const awaitingWallet = await ikaClient.getDWalletInParticularState(
+        dWalletId,
+        "AwaitingKeyHolderSignature",
+        { timeout: signTimeoutMs, interval: signPollIntervalMs },
+      );
+      if (!encryptedShareId) {
+        throw new Error("Unable to identify encrypted user secret key share ID for EVM dWallet activation");
+      }
+      const acceptTx = new Transaction();
+      const acceptIkaTx = new IkaTransaction({
+        ikaClient,
+        transaction: acceptTx,
+        userShareEncryptionKeys,
+      });
+      await acceptIkaTx.acceptEncryptedUserShare({
+        dWallet: awaitingWallet,
+        userPublicOutput: dkgInput.userPublicOutput,
+        encryptedUserSecretKeyShareId: encryptedShareId,
+      });
+      if (dkgGasBudget !== undefined) acceptTx.setGasBudget(dkgGasBudget);
+      await executeSuiTransaction(acceptTx, dkgGasCoinId);
+      activeWallet = await ikaClient.getDWalletInParticularState(
+        dWalletId,
+        "Active",
+        { timeout: signTimeoutMs, interval: signPollIntervalMs },
+      );
+    }
+
+    const publicKeyBytes = await (await import("@ika.xyz/sdk")).publicKeyFromDWalletOutput(
+      Curve.SECP256K1,
+      Uint8Array.from(activeWallet.state.Active.public_output),
+    );
+    const ethereumAddress = ethereumAddressFromPublicKey(publicKeyBytes);
+
+    const presignTx = new Transaction();
+    const presignIkaTx = new IkaTransaction({
+      ikaClient,
+      transaction: presignTx,
+      userShareEncryptionKeys,
+    });
+    const unverifiedPresignCap = presignIkaTx.requestGlobalPresign({
+      dwalletNetworkEncryptionKeyId: objectId(activeNetworkEncryptionKey),
+      curve: Curve.SECP256K1,
+      signatureAlgorithm: SignatureAlgorithm.ECDSASecp256k1,
+      ikaCoin: presignTx.object(ikaCoinId),
+      suiCoin: presignTx.object(suiCoinId),
+    });
+    presignTx.transferObjects([unverifiedPresignCap], this.options.suiAddress);
+    if (presignGasBudget !== undefined) presignTx.setGasBudget(presignGasBudget);
+    const presignResult = await executeSuiTransaction(presignTx, presignGasCoinId);
+    const unverifiedPresignCapId =
+      findCreatedId(presignResult, /UnverifiedPresignCap/) ||
+      objectId(unverifiedPresignCap);
+    const presignId =
+      findCreatedId(presignResult, /PresignSession/) ||
+      findCreatedId(presignResult, /Presign/);
+    if (!presignId || !unverifiedPresignCapId) {
+      throw new Error("Unable to identify EVM SECP256K1 presign objects from Ika result");
+    }
+    await ikaClient.getPresignInParticularState(presignId, "Completed", {
+      timeout: signTimeoutMs,
+      interval: signPollIntervalMs,
+    });
+
+    const wallet: DWalletRecord = {
+      id: dWalletId,
+      name: request.name,
+      addresses: buildEvmAddressMap(ethereumAddress, request.chains),
+      supportedChains: request.chains,
+      metadata: {
+        ...request.config,
+        source: "ika",
+        production: true,
+        curve: "SECP256K1",
+        signatureAlgorithm: "ECDSASecp256k1",
+        hashScheme: "KECCAK256",
+        publicKey: bytesToHex(publicKeyBytes),
+        dWalletCapId,
+        encryptedUserSecretKeyShareId: encryptedShareId,
+        presignId,
+        unverifiedPresignCapId,
+        userShareEncryptionKeysGenerated: this.options.userShareEncryptionKeysGenerated,
+        totalMs: nowMs() - startedAt,
+      },
+    };
+
+    this.runtimeWallets.set(dWalletId, {
+      wallet,
+      dWalletCapId,
+      encryptedUserSecretKeyShareId: encryptedShareId,
+      presignId,
+      unverifiedPresignCapId,
+      dkgUserPublicOutput: dkgInput.userPublicOutput,
+      ethereumAddress,
+    });
+    return wallet;
+  }
+
   async getDWalletRecord(chains: InkChain[]): Promise<DWalletRecord> {
+    const dWalletId = requiredValue(this.options as unknown as Record<string, string | undefined>, "dWalletId");
     const dWallet = await this.options.ikaClient.getDWalletInParticularState(
-      this.options.dWalletId,
+      dWalletId,
       "Active",
       { timeout: this.options.signTimeoutMs ?? 120000 },
     );
 
     return {
-      id: this.options.dWalletId,
+      id: dWalletId,
       addresses: buildConfiguredAddresses(
-        { IKA_ETH_ADDRESS: this.options.ethereumAddress },
+        { IKA_ETH_ADDRESS: requiredValue(this.options as unknown as Record<string, string | undefined>, "ethereumAddress") },
         chains,
       ),
       supportedChains: chains,
@@ -1065,6 +1181,7 @@ class RealIkaEthereumSigner {
   }
 
   async signTransaction(unsignedTx: Record<string, unknown>, context: {
+    dWalletId: string;
     provider: ethers.Provider;
     from?: string;
     onTiming?: (timings: Record<string, number>) => void;
@@ -1085,13 +1202,13 @@ class RealIkaEthereumSigner {
       Curve,
       Hash,
       SignatureAlgorithm,
-      dWalletId,
-      dWalletCapId,
-      presignId,
-      unverifiedPresignCapId,
+      dWalletId: configuredDWalletId,
+      dWalletCapId: configuredDWalletCapId,
+      presignId: configuredPresignId,
+      unverifiedPresignCapId: configuredUnverifiedPresignCapId,
       ikaCoinId,
       suiCoinId,
-      ethereumAddress,
+      ethereumAddress: configuredEthereumAddress,
       importedKey = false,
       encryptedUserSecretKeyShareId,
       secretShare,
@@ -1103,6 +1220,22 @@ class RealIkaEthereumSigner {
       signTimeoutMs = 120000,
       signPollIntervalMs = 1500,
     } = this.options;
+    const runtime = this.runtimeWallets.get(context.dWalletId);
+    const dWalletId = runtime?.wallet.id ?? configuredDWalletId;
+    if (!dWalletId || dWalletId !== context.dWalletId) {
+      throw new Error(`IkaEvmSigningConnector is not configured for dWallet ${context.dWalletId}`);
+    }
+    const dWalletCapId = runtime?.dWalletCapId ?? configuredDWalletCapId;
+    const presignId = runtime?.presignId ?? configuredPresignId;
+    const unverifiedPresignCapId = runtime?.unverifiedPresignCapId ?? configuredUnverifiedPresignCapId;
+    const ethereumAddress = runtime?.ethereumAddress ?? configuredEthereumAddress;
+    const encryptedShareId = runtime?.encryptedUserSecretKeyShareId ?? encryptedUserSecretKeyShareId;
+    if (!dWalletCapId || !presignId || !unverifiedPresignCapId) {
+      throw new Error("EVM dWallet signing requires dWallet cap and completed SECP256K1 presign IDs");
+    }
+    if (!ethereumAddress) {
+      throw new Error("EVM dWallet signing requires an Ethereum signer address");
+    }
 
     const ethTx = await prepareUnsignedTransaction(unsignedTx, {
       provider: context.provider,
@@ -1122,10 +1255,10 @@ class RealIkaEthereumSigner {
     mark("loadIkaStateMs");
 
     let encryptedUserSecretKeyShare;
-    if (encryptedUserSecretKeyShareId) {
+    if (encryptedShareId) {
       encryptedUserSecretKeyShare =
         await ikaClient.getEncryptedUserSecretKeyShareInParticularState(
-          encryptedUserSecretKeyShareId,
+          encryptedShareId,
           "KeyHolderSigned",
           { timeout: signTimeoutMs }
         );
@@ -1187,7 +1320,7 @@ class RealIkaEthereumSigner {
     }
     mark("buildIkaRequestMs");
 
-    const suiResult = await executeSuiTransaction(suiTx);
+    const suiResult = await executeSuiTransaction(suiTx, this.options.signGasCoinId);
     mark("executeSuiTransactionMs");
 
     const signId = extractSignId(suiResult);
@@ -1224,7 +1357,7 @@ class RealIkaEthereumSigner {
 async function createRealIkaEthereumSignerFromEnv(
   env: Record<string, string | undefined>,
 ): Promise<RealIkaEthereumSigner> {
-  validateIkaEvmSigningEnv(env);
+  validateIkaEvmBaseEnv(env);
 
   const [ikaSdk, suiJsonRpcModule, suiTxModule, ed25519Module, cryptographyModule] =
     await Promise.all([
@@ -1254,6 +1387,7 @@ async function createRealIkaEthereumSignerFromEnv(
       ? { encryptionKeyID: env.IKA_NETWORK_ENCRYPTION_KEY_ID }
       : undefined,
   });
+  await ikaClient.initialize?.();
 
   const decoded = cryptographyModule.decodeSuiPrivateKey(requiredValue(env, "IKA_SUI_PRIVATE_KEY"));
   const suiKeyScheme = decoded.scheme;
@@ -1261,11 +1395,14 @@ async function createRealIkaEthereumSignerFromEnv(
     throw new Error(`Unsupported Sui private key schema for Ika signing: ${suiKeyScheme}`);
   }
   const suiSigner = ed25519Module.Ed25519Keypair.fromSecretKey(decoded.secretKey);
-  const userShareEncryptionKeys = cleanEnvValue(env.IKA_USER_SHARE_ENCRYPTION_KEYS_B64)
+  const suiAddress = suiSigner.getPublicKey().toSuiAddress();
+  const configuredShareKeys = cleanEnvValue(env.IKA_USER_SHARE_ENCRYPTION_KEYS_B64);
+  const userShareEncryptionKeysGenerated = !configuredShareKeys;
+  const userShareEncryptionKeys = configuredShareKeys
     ? ikaSdk.UserShareEncryptionKeys.fromShareEncryptionKeysBytes(
-        base64ToBytes(cleanEnvValue(env.IKA_USER_SHARE_ENCRYPTION_KEYS_B64)!)
+        base64ToBytes(configuredShareKeys)
       )
-    : undefined;
+    : await ikaSdk.UserShareEncryptionKeys.fromRootSeedKey(randomBytes(32), ikaSdk.Curve.SECP256K1);
 
   return new RealIkaEthereumSigner({
     ikaClient,
@@ -1274,24 +1411,41 @@ async function createRealIkaEthereumSignerFromEnv(
     Curve: ikaSdk.Curve,
     Hash: ikaSdk.Hash,
     SignatureAlgorithm: ikaSdk.SignatureAlgorithm,
-    dWalletId: requiredValue(env, "IKA_DWALLET_ID"),
-    dWalletCapId: requiredValue(env, "IKA_DWALLET_CAP_ID"),
-    presignId: requiredValue(env, "IKA_PRESIGN_ID"),
-    unverifiedPresignCapId: requiredValue(env, "IKA_UNVERIFIED_PRESIGN_CAP_ID"),
+    dWalletId: cleanEnvValue(env.IKA_DWALLET_ID),
+    dWalletCapId: cleanEnvValue(env.IKA_DWALLET_CAP_ID),
+    presignId: cleanEnvValue(env.IKA_PRESIGN_ID),
+    unverifiedPresignCapId: cleanEnvValue(env.IKA_UNVERIFIED_PRESIGN_CAP_ID),
     ikaCoinId: requiredValue(env, "IKA_COIN_ID"),
     suiCoinId: requiredValue(env, "IKA_SUI_COIN_ID"),
-    ethereumAddress: requiredValue(env, "IKA_ETH_ADDRESS"),
+    ethereumAddress: cleanEnvValue(env.IKA_ETH_ADDRESS),
     importedKey: env.IKA_IMPORTED_KEY_DWALLET === "true",
     encryptedUserSecretKeyShareId: env.IKA_ENCRYPTED_USER_SECRET_KEY_SHARE_ID,
-    userShareEncryptionKeys,
     secretShare: cleanEnvValue(env.IKA_USER_SECRET_KEY_SHARE_HEX)
       ? hexToBytes(cleanEnvValue(env.IKA_USER_SECRET_KEY_SHARE_HEX)!)
       : undefined,
     publicOutput: cleanEnvValue(env.IKA_PUBLIC_OUTPUT_HEX)
       ? hexToBytes(cleanEnvValue(env.IKA_PUBLIC_OUTPUT_HEX)!)
       : undefined,
-    executeSuiTransaction: (transaction: any) =>
-      suiClient.signAndExecuteTransaction({
+    userShareEncryptionKeys,
+    userShareEncryptionKeysGenerated,
+    executeSuiTransaction: async (transaction: any, gasCoinId?: string) => {
+      transaction.setSender(suiAddress);
+      const gasObjectId = gasCoinId ? cleanEnvValue(gasCoinId) : undefined;
+      if (gasObjectId) {
+        const gasObject = await suiClient.getObject({
+          id: gasObjectId,
+          options: {},
+        });
+        if (!gasObject.data) {
+          throw new Error(`Unable to load Ika EVM gas coin ${gasObjectId}`);
+        }
+        transaction.setGasPayment([{
+          objectId: gasObject.data.objectId,
+          version: gasObject.data.version,
+          digest: gasObject.data.digest,
+        }]);
+      }
+      return suiClient.signAndExecuteTransaction({
         signer: suiSigner,
         transaction,
         options: {
@@ -1299,7 +1453,14 @@ async function createRealIkaEthereumSignerFromEnv(
           showObjectChanges: true,
           showEffects: true,
         },
-      }),
+      });
+    },
+    suiAddress,
+    dkgGasCoinId: cleanEnvValue(env.IKA_EVM_DKG_GAS_COIN_ID) ?? cleanEnvValue(env.IKA_GAS_COIN_ID),
+    presignGasCoinId: cleanEnvValue(env.IKA_EVM_PRESIGN_GAS_COIN_ID) ?? cleanEnvValue(env.IKA_GAS_COIN_ID),
+    signGasCoinId: cleanEnvValue(env.IKA_EVM_SIGN_GAS_COIN_ID) ?? cleanEnvValue(env.IKA_SIGN_GAS_COIN_ID),
+    dkgGasBudget: env.IKA_EVM_DKG_GAS_BUDGET ? Number(env.IKA_EVM_DKG_GAS_BUDGET) : undefined,
+    presignGasBudget: env.IKA_EVM_PRESIGN_GAS_BUDGET ? Number(env.IKA_EVM_PRESIGN_GAS_BUDGET) : undefined,
     signGasBudget: env.IKA_SIGN_GAS_BUDGET ? Number(env.IKA_SIGN_GAS_BUDGET) : undefined,
     getSignGasPayment: cleanEnvValue(env.IKA_SIGN_GAS_COIN_ID)
       ? async () => {
@@ -1526,14 +1687,25 @@ function validateIkaEvmSigningEnv(env: Record<string, string | undefined>): void
     "IKA_DWALLET_CAP_ID",
     "IKA_PRESIGN_ID",
     "IKA_UNVERIFIED_PRESIGN_CAP_ID",
-    "IKA_COIN_ID",
-    "IKA_SUI_COIN_ID",
     "IKA_ETH_ADDRESS",
-    "IKA_SUI_PRIVATE_KEY",
+    ...IKA_EVM_BASE_ENV_KEYS,
   ];
   const missing = required.filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(`Missing required Ika signing env vars: ${missing.join(", ")}`);
+  }
+}
+
+const IKA_EVM_BASE_ENV_KEYS = [
+  "IKA_COIN_ID",
+  "IKA_SUI_COIN_ID",
+  "IKA_SUI_PRIVATE_KEY",
+];
+
+function validateIkaEvmBaseEnv(env: Record<string, string | undefined>): void {
+  const missing = IKA_EVM_BASE_ENV_KEYS.filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Missing required Ika EVM dWallet env vars: ${missing.join(", ")}`);
   }
 }
 
@@ -1831,6 +2003,26 @@ async function buildEd25519Addresses(
   return addresses;
 }
 
+function ethereumAddressFromPublicKey(publicKeyBytes: Uint8Array): string {
+  let key = ethers.hexlify(publicKeyBytes);
+  if (publicKeyBytes.length === 33) {
+    key = ethers.SigningKey.computePublicKey(key, false);
+  }
+  if (key.startsWith("0x04")) key = `0x${key.slice(4)}`;
+  if (ethers.getBytes(key).length !== 64) {
+    throw new Error(`Unexpected secp256k1 public key length: ${ethers.getBytes(key).length}`);
+  }
+  return ethers.getAddress(`0x${ethers.keccak256(key).slice(-40)}`);
+}
+
+function buildEvmAddressMap(ethereumAddress: string, chains: InkChain[]): ChainAddressMap {
+  const addresses: ChainAddressMap = {};
+  if (chains.some((chain) => chain.type === "evm")) {
+    addresses.evm = ethereumAddress;
+  }
+  return addresses;
+}
+
 function hexToBytes(value: string): Uint8Array {
   const hex = value.replace(/^0x/i, "");
   if (!hex || hex.length % 2 !== 0 || !/^[\da-f]+$/i.test(hex)) {
@@ -1925,43 +2117,4 @@ function cleanEnvValue(value: string | undefined): string | undefined {
 
 function nowMs(): number {
   return Number(process.hrtime.bigint() / 1000000n);
-}
-
-function buildDeterministicAddresses(dWalletId: string, chains: InkChain[]): ChainAddressMap {
-  const addresses: ChainAddressMap = {};
-  for (const chain of chains) {
-    if (chain.type === "evm") addresses.evm ??= `0x${hashish(`${dWalletId}:evm`).slice(0, 40)}`;
-    if (chain.type === "solana") addresses.solana ??= `Ink${hashish(`${dWalletId}:solana`).slice(0, 40)}`;
-    if (chain.type === "sui") addresses.sui ??= `0x${hashish(`${dWalletId}:sui`).slice(0, 64)}`;
-  }
-  return addresses;
-}
-
-function mergeChains(existing: InkChain[], incoming: InkChain[]): InkChain[] {
-  const seen = new Set<string>();
-  const merged: InkChain[] = [];
-  for (const chain of [...existing, ...incoming]) {
-    const key = chainKey(chain);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(chain);
-  }
-  return merged;
-}
-
-function chainKey(chain: InkChain): string {
-  if (chain.type === "evm") return `evm:${chain.chainId}`;
-  if (chain.type === "solana") return `solana:${chain.cluster}`;
-  return `sui:${chain.network}`;
-}
-
-function hashish(input: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < input.length; index++) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Array.from({ length: 16 }, (_, index) =>
-    ((hash + index * 2654435761) >>> 0).toString(16).padStart(8, "0")
-  ).join("");
 }
